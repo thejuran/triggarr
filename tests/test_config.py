@@ -922,11 +922,16 @@ def test_atomic_toml_write_logs_os_replace_failure(tmp_path: Path) -> None:
 
 
 def test_atomic_toml_write_log_failure_false_suppresses_primary_line(tmp_path: Path) -> None:
-    """log_failure=False suppresses only the primary 'Config write failed' line (D-07).
+    """log_failure=False suppresses the primary 'Config write failed' line (D-07).
 
     A caller that logs the failure itself with richer context (app, instance,
     system reason) passes log_failure=False so one failed write yields one
-    error log entry overall, not two.
+    error log entry overall, not two. This test covers the OSError path;
+    log_failure=False also suppresses the 'Config write failed (unexpected
+    error)' line, which
+    test_atomic_toml_write_log_failure_false_suppresses_unexpected_error_line
+    covers. The directory-fsync warning and the temp-file cleanup error are
+    never suppressed.
     """
     config_file = tmp_path / "test.toml"
 
