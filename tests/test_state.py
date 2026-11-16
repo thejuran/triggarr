@@ -682,6 +682,27 @@ def test_state_unreadable_warning_is_accurate_and_skips_set_aside(tmp_path: Path
     assert state_file.read_text() == content
 
 
+def test_state_unreadable_warning_does_not_promise_replacement(tmp_path: Path) -> None:
+    """The unreadable-state-file warning says the next save will try to replace
+    the file, not that it will: the replace can itself fail, e.g. when the path
+    is a directory or the volume is read-only (iteration 2 IN-01).
+    """
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {}, "sonarr": {}, "search_log": []}))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with patch("builtins.open", side_effect=IsADirectoryError(21, "Is a directory")):
+            load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert "the next state save will try to replace it" in captured
+    assert "will replace" not in captured
+
+
 # ---------------------------------------------------------------------------
 # RES-02: last_success field tests
 # ---------------------------------------------------------------------------
