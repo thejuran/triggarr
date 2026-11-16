@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "in review -- Phase 87 executed (3 of 3 plans), fix rounds 1-3 applied; iteration 4 review: BM no critical or warning, Codex 1 medium finding; owner decision pending (not pushed)"
-stopped_at: "Phase 87 fix round 3 reviewed locally at 0cb0f12e (BM iteration 4: 0 critical, 0 warning, 2 info; Codex: complete, 1 medium finding F001 -- a removal cancelled mid-save leaves file and running app out of step until restart); Save Settings stale-snapshot item kept in the backlog by the owner; browser checks 1 and 2 passed at f099c6a8, screen-reader check pending; owner to disposition Codex F001 before push"
-last_updated: "2026-11-16T00:49:14.000Z"
+status: "in review -- Phase 87 executed (3 of 3 plans), fix rounds 1-3 applied and reviewed locally at 0cb0f12e; security check and end-of-phase push next (not pushed)"
+stopped_at: "Phase 87 reviewed locally at 0cb0f12e (BM iteration 4: 0 critical, 0 warning, 2 info; Codex: complete, 1 medium finding F001, owner disposition 2026-11-15: backlog); browser checks 1 and 2 passed at f099c6a8, screen-reader check pending; next: /bm:secure-phase 87, /deep-review offer, then the end-of-phase push and PR"
+last_updated: "2026-11-16T00:50:40.000Z"
 last_activity: "2026-11-15 -- Phase 87 fix round 3 reviewed (BM + Codex)"
 progress:
   total_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
 Plan: 3 of 3 executed
-Status: Phase 87 executed, in review — fix rounds 1-3 applied; owner decision pending on Codex F001 (cancellation during a removal save)
+Status: Phase 87 executed, in review — fix rounds 1-3 reviewed locally; security check and end-of-phase push next
 Last activity: 2026-11-15 — Phase 87 fix round 3 reviewed (BM + Codex)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
@@ -87,6 +87,7 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 
 ### Decisions
 
+- 2026-11-15 (Phase 87 review, owner): fix round 1 for the first review's warnings; Codex F001 at `f099c6a8` (Add Instance during a removal save) fixed in Phase 87; Save Settings' stale-snapshot behavior stays in the maintenance backlog (it predates the phase; proposed design recorded there); stopping rule after fix round 2: only critical or warning findings are fixed, minor items go to the backlog; Codex F001 at `0cb0f12e` (removal cancelled mid-save) goes to the backlog, to be fixed once for all settings routes. See 87-REVIEW.md, 87-REVIEW-FIX.md and `.planning/backlog/MAINTENANCE.md`.
 - 2026-11-15 (Phase 87 discuss, owner): a failed removal shows its error on the instance row without a page reload, with fixed plain wording; a reset state file is set aside as one copy (both wrong-shape and truncated cases); other settings routes found unsafe and the Save/Add failure messages are recorded in the maintenance backlog, not fixed here; post-save cleanup failures are logged and the user sees a normal removal. See 87-CONTEXT.md.
 - 2026-11-15 (v2.14 roadmap): 24 requirements mapped to 6 phases (87-92) with 100% coverage, no orphans, no double-mapping. Phase order follows the build order recommended in `.planning/research/SUMMARY.md`; LIFE and DELIV each kept in one phase per the roadmapping instruction; RMINST sequenced after CONSIST for the shared instance-removal route; Phase 92 depends on all five fix phases since it validates them rather than anticipating them.
 - 2026-11-15 (v2.14 start, owner): Reliability scope confirmed as agreed in ROADMAP.md (state/config consistency 999.9, narrowed resource lifecycle 999.13, search-command delivery). Folded in from the backlog: bounding pre-upgrade database backups, a lifecycle for pending searches of a removed Sonarr instance (bugs-005), and SA-12 in reduced form (regression check plus an "unsupported" note; the 2026-11-14 correction showed startup is not affected). The dashboard card re-render/click item was not folded in. Milestone label v2.14, planned release v2.14.0; no v2.13.0 release will exist.
