@@ -899,28 +899,34 @@ async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
     if not valid:
         return HTMLResponse(err, status_code=400)
 
-    settings = request.app.state.settings
-    instances = getattr(settings, app_name)
-
-    if instance_name in instances:
-        return HTMLResponse(f"Instance '{html.escape(instance_name)}' already exists", status_code=400)
-    if len(instances) >= 5:
-        return HTMLResponse("Maximum 5 instances per app type", status_code=400)
-
-    # Build new config dict, add instance, and validate before mutating live state
-    config_path = request.app.state.config_path
-    config_dict = _settings_to_dict(settings)
-    config_dict[app_name][instance_name] = InstanceConfig().model_dump()
-    config_dict[app_name][instance_name]["api_key"] = ""
-    config_dict[app_name][instance_name]["id"] = new_instance_id()
-    try:
-        new_settings = SettingsModel(**config_dict)
-    except pydantic.ValidationError as exc:
-        logger.warning("Invalid settings rejected on add_instance: {exc}", exc=exc)
-        return HTMLResponse("Validation error: invalid configuration", status_code=400)
-
-    # Acquire search_lock to prevent races with in-flight search jobs
+    # Acquire search_lock to prevent races with in-flight search jobs. The
+    # settings read, the duplicate/limit checks, the build and the validation
+    # all happen inside the lock (not before it): a request that waited here
+    # while another one changed settings (e.g. a removal still writing the
+    # file) must build from the settings current now, not from a stale
+    # pre-lock snapshot that would bring a removed instance back.
     async with request.app.state.search_lock:
+        settings = request.app.state.settings
+        instances = getattr(settings, app_name)
+
+        if instance_name in instances:
+            return HTMLResponse(f"Instance '{html.escape(instance_name)}' already exists", status_code=400)
+        if len(instances) >= 5:
+            return HTMLResponse("Maximum 5 instances per app type", status_code=400)
+
+        # Build new config dict, add instance, and validate before writing
+        # to disk or mutating live state
+        config_path = request.app.state.config_path
+        config_dict = _settings_to_dict(settings)
+        config_dict[app_name][instance_name] = InstanceConfig().model_dump()
+        config_dict[app_name][instance_name]["api_key"] = ""
+        config_dict[app_name][instance_name]["id"] = new_instance_id()
+        try:
+            new_settings = SettingsModel(**config_dict)
+        except pydantic.ValidationError as exc:
+            logger.warning("Invalid settings rejected on add_instance: {exc}", exc=exc)
+            return HTMLResponse("Validation error: invalid configuration", status_code=400)
+
         # Serialize from validated model to guarantee SecretStr extraction
         await asyncio.get_running_loop().run_in_executor(
             None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
