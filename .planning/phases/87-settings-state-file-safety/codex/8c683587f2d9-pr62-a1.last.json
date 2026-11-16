@@ -1,0 +1,157 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "8c683587f2d96a7265f14b2edfc6b16bde7ee8e0",
+  "inspected_base_sha": "3cede40099a1f8a5d6db45542e66c650bfa98952",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/62",
+  "scope": "Full requested net diff, including tests, non-markdown planning changes, and all three changed Phase 87 plan files.",
+  "verdict": "no-findings",
+  "summary": "No actionable new defects identified. Harness evidence reports 3336 passed and 1 skipped at the requested head. Independent lock audit and targeted cancelled-close test passed.",
+  "coverage": [
+    "Removal write ordering, executor refusal, abandoned jobs, claimed-write cancellation, cleanup isolation, and client closure.",
+    "Concurrent removal/add/save operations and settings snapshots under search_lock.",
+    "Failure response escaping, contextual logging, htmx redirects, row-local errors, and CSP guard assertions.",
+    "State root validation, unreadable-file handling, diagnostic-copy replacement, permissions, and failure cleanup.",
+    "All changed regression tests and relevant config, scheduler, client, and state callers.",
+    "87-01-PLAN.md, 87-02-PLAN.md, 87-03-PLAN.md, and nine empty .gitkeep deletions.",
+    "No CI, publication, or audit-policy weakening found in the scoped changes."
+  ],
+  "exclusions": [
+    "Planning markdown other than the explicitly included phase plans.",
+    "Raw review transcripts and generated review artifacts under .planning/."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 3cede40099a1f8a5d6db45542e66c650bfa98952",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 3cede40099a1f8a5d6db45542e66c650bfa98952..8c683587f2d96a7265f14b2edfc6b16bde7ee8e0 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..8c683587f2d96a7265f14b2edfc6b16bde7ee8e0 -- triggarr",
+      "exit_code": 0,
+      "purpose": "Inspect production changes; truncated sections subsequently read directly."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..8c683587f2d96a7265f14b2edfc6b16bde7ee8e0 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff; subsequently read each plan directly."
+    },
+    {
+      "command": "sed -n '960,1280p' triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Inspect complete removal implementation."
+    },
+    {
+      "command": "git diff --name-only 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Identify changed plans."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_config.py tests/test_state.py",
+      "exit_code": 0,
+      "purpose": "Review config and state regression tests."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_web.py | sed -n '1,440p'",
+      "exit_code": 0,
+      "purpose": "Review web tests, first portion."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review UI and audit plan."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_web.py | sed -n '441,860p'",
+      "exit_code": 0,
+      "purpose": "Review web tests, second portion."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_web.py | sed -n '861,1300p'",
+      "exit_code": 0,
+      "purpose": "Review remaining web tests."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review removal plan."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review state recovery plan."
+    },
+    {
+      "command": "sed -n '634,900p' triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Trace settings form construction and save lifecycle."
+    },
+    {
+      "command": "sed -n '100,208p' triggarr/state.py; sed -n '305,405p' triggarr/state.py; sed -n '145,220p' triggarr/config.py",
+      "exit_code": 0,
+      "purpose": "Inspect migration, defaults, persistence, and atomic writer context."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- . ':(exclude)triggarr/**' ':(exclude)tests/**' ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect remaining scoped files."
+    },
+    {
+      "command": "rg -n 'load_state|async def close|async def job|search_lock|instance_name not in' triggarr/search/scheduler.py triggarr/clients/base.py; sed -n '465,535p' triggarr/search/scheduler.py; sed -n '285,320p' triggarr/clients/base.py; cat tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Trace startup, closure, and lock audit."
+    },
+    {
+      "command": "ls -d .venv .venv/bin/python; git status --short",
+      "exit_code": 0,
+      "purpose": "Check available interpreter and working tree."
+    },
+    {
+      "command": ".venv/bin/python -B tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Verify 8 of 8 writer references are covered."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -m pytest -p no:cacheprovider tests/test_web.py::test_close_removed_client_reports_cancelled_close_as_error -q",
+      "exit_code": 1,
+      "purpose": "Attempt targeted test; pytest capture could not create temporary files."
+    },
+    {
+      "command": "sed -n '1,36p' .planning/phases/87-settings-state-file-safety/87-02-PLAN.md; sed -n '155,205p' triggarr/search/scheduler.py; git diff --numstat 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Complete truncated plan inspection and inspect scheduled-job locking."
+    },
+    {
+      "command": "sed -n '200,272p' triggarr/search/scheduler.py; sed -n '340,445p' triggarr/search/scheduler.py; rg -n 'setdefault|instance_name|async def run' triggarr/search/engine.py | head -45; sed -n '1280,1335p' triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Trace queued search behavior and removed-instance guards."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -m pytest -s -p no:cacheprovider tests/test_web.py::test_close_removed_client_reports_cancelled_close_as_error -q",
+      "exit_code": 0,
+      "purpose": "Run targeted test without temporary-file capture: 1 passed."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Full pytest suite was not independently rerun in the read-only sandbox; full-suite results come from the harness evidence for the exact head.",
+    "Initial targeted pytest invocation failed during capture initialization; retry with capture disabled passed.",
+    "Browser interaction was assessed through source and regression tests, without a live browser run."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
