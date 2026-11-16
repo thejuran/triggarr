@@ -8,13 +8,14 @@ and partial endpoints for htmx fragment updates.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
-import functools
 import html
 import os
 import re
 import secrets
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1022,31 +1023,81 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
             return _removal_failed_response(request, instance_name)
 
         # Write updated config to TOML (offloaded to thread -- blocking I/O).
-        # The handler below logs the one contextual error for every way the
+        # The code below logs the one contextual error for every way the
         # write can fail -- OSError from the writer, any other exception from
-        # inside it, or the write never starting (run_in_executor itself
-        # raising) -- so the writer's own generic lines are suppressed
-        # (log_failure=False). Exception, not BaseException: cancellation
-        # still propagates.
+        # inside it, or run_in_executor itself raising -- so the writer's own
+        # generic lines are suppressed (log_failure=False). Exception, not
+        # BaseException: cancellation still propagates.
+        #
+        # run_in_executor raising does NOT mean the write was never queued.
+        # When the OS refuses a new thread ("can't start new thread") the
+        # thread pool has already queued the job, and a worker would run it
+        # later -- after the user was told nothing changed. So the job goes
+        # through _write_unless_abandoned: once this route has given up on
+        # the write, the job does nothing. write_gate makes that decision
+        # atomic. It is only ever held for a flag check or flip, never
+        # across the write, so taking it here cannot stall the event loop.
+        # Either the handler sets write_abandoned first and the job returns
+        # without writing, or the job sets write_claimed first and the
+        # handler knows the write is running or finished and waits for its
+        # real result (write_outcome) instead of guessing.
+        write_gate = threading.Lock()
+        write_abandoned = False
+        write_claimed = False
+        write_outcome: concurrent.futures.Future[None] = concurrent.futures.Future()
+
+        def _write_unless_abandoned() -> None:
+            nonlocal write_claimed
+            with write_gate:
+                if write_abandoned:
+                    return
+                write_claimed = True
+                # Mark the outcome as running so a cancelled waiter cannot
+                # cancel it out from under set_result/set_exception below.
+                write_outcome.set_running_or_notify_cancel()
+            try:
+                _atomic_toml_write(config_path, config_dict, log_failure=False)
+            except BaseException as exc:  # recorded for the route, then re-raised unchanged
+                write_outcome.set_exception(exc)
+                raise
+            write_outcome.set_result(None)
+
+        write_error: Exception | None = None
         try:
-            await asyncio.get_running_loop().run_in_executor(
-                None,
-                functools.partial(
-                    _atomic_toml_write,
-                    config_path,
-                    config_dict,
-                    log_failure=False,
-                ),
-            )
+            await asyncio.get_running_loop().run_in_executor(None, _write_unless_abandoned)
         except Exception as exc:  # error boundary: nothing live has been changed yet
+            write_error = exc
+            with write_gate:
+                write_abandoned = True
+                write_already_claimed = write_claimed
+            if write_already_claimed:
+                # A worker took the job before it could be called off: the
+                # write is running or has finished, and its result decides.
+                # (When the writer itself raised, this is that same error.)
+                try:
+                    await asyncio.wrap_future(write_outcome)
+                except Exception as job_exc:
+                    write_error = job_exc
+                else:
+                    write_error = None
+                    logger.warning(
+                        "Settings file {path} was saved while removing {app}/{inst}, "
+                        "although starting the write reported: {exc_type}: {exc}",
+                        path=config_path,
+                        app=app_name,
+                        inst=instance_name,
+                        exc_type=type(exc).__name__,
+                        exc=exc,
+                    )
+        if write_error is not None:
             logger.error(
                 "Could not save settings file {path} while removing {app}/{inst}; "
                 "instance kept: {exc_type}: {exc}",
                 path=config_path,
                 app=app_name,
                 inst=instance_name,
-                exc_type=type(exc).__name__,
-                exc=exc,
+                exc_type=type(write_error).__name__,
+                exc=write_error,
             )
             return _removal_failed_response(request, instance_name)
 
