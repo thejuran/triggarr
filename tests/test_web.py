@@ -1658,6 +1658,127 @@ async def test_remove_instance_concurrent_same_instance_second_is_not_found(mult
     assert client_4k.close.await_count == 1
 
 
+async def test_add_instance_during_removal_write_does_not_resurrect_removed(multi_instance_app):
+    """An Add Instance submitted while a removal is still writing the settings
+    file must not bring the removed instance back (Codex F001).
+
+    Sequence: the removal holds search_lock with its writer paused; Add
+    Instance is submitted and gets as far as it can; the writer is released.
+    Afterwards the removed instance is absent from the settings file, live
+    settings, the client registry and state, and the added one is present.
+    """
+    import threading
+    import tomllib
+
+    from triggarr.config import _atomic_toml_write as real_atomic_write
+    from triggarr.web.routes import validate_instance_name as real_validate_instance_name
+
+    writer_started = threading.Event()
+    release_writer = threading.Event()
+    write_count = 0
+
+    def gated_atomic_write(path, data, **kwargs):
+        nonlocal write_count
+        write_count += 1
+        if write_count == 1:
+            writer_started.set()
+            if not release_writer.wait(10):
+                raise RuntimeError("test gate timed out")
+        return real_atomic_write(path, data, **kwargs)
+
+    add_reached_validation = asyncio.Event()
+
+    def recording_validate(name):
+        # Add Instance has no await between this call and its wait for
+        # search_lock, so once this fires the request has either already
+        # taken its settings snapshot (unfixed code) or is about to queue on
+        # the lock (fixed code).
+        add_reached_validation.set()
+        return real_validate_instance_name(name)
+
+    client_4k = multi_instance_app.state.radarr_clients["4K"]
+
+    try:
+        with (
+            patch("triggarr.web.routes._atomic_toml_write", side_effect=gated_atomic_write),
+            patch("triggarr.web.routes.validate_instance_name", side_effect=recording_validate),
+        ):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+            ) as ac:
+                removal = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+                for _ in range(2000):
+                    if writer_started.is_set():
+                        break
+                    await asyncio.sleep(0.005)
+                assert writer_started.is_set(), "the removal's settings write must be in progress"
+                assert "4K" in multi_instance_app.state.settings.radarr
+
+                addition = asyncio.create_task(
+                    ac.post("/api/instance/add", data={"app_name": "radarr", "instance_name": "Extra"})
+                )
+                await asyncio.wait_for(add_reached_validation.wait(), timeout=10)
+                for _ in range(5):
+                    await asyncio.sleep(0)
+                assert not addition.done(), "Add Instance must wait for the removal to finish"
+
+                release_writer.set()
+                removal_response, add_response = await asyncio.gather(removal, addition)
+    finally:
+        release_writer.set()
+
+    assert removal_response.status_code == 303
+    assert add_response.status_code == 303
+
+    on_disk = tomllib.loads(multi_instance_app.state.config_path.read_text())
+    assert "4K" not in on_disk["radarr"]
+    assert "Extra" in on_disk["radarr"]
+    assert "Default" in on_disk["radarr"]
+
+    live = multi_instance_app.state.settings.radarr
+    assert "4K" not in live
+    assert "Extra" in live
+    assert "Default" in live
+
+    assert "4K" not in multi_instance_app.state.radarr_clients
+    assert client_4k.close.await_count == 1
+
+    radarr_state = multi_instance_app.state.triggarr_state["radarr"]
+    assert "4K" not in radarr_state
+    assert "Extra" in radarr_state
+
+
+async def test_add_instance_duplicate_check_uses_settings_current_under_lock(multi_instance_app):
+    """Two overlapping Add Instance requests for the same name: the duplicate
+    check runs against the settings current once the lock is held, so exactly
+    one is created and the other gets the existing 400 (Codex F001).
+    """
+    lock = multi_instance_app.state.search_lock
+    await lock.acquire()
+    try:
+        async with httpx.AsyncClient(
+            transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+        ) as ac:
+            form = {"app_name": "radarr", "instance_name": "Extra"}
+            task_a = asyncio.create_task(ac.post("/api/instance/add", data=form))
+            task_b = asyncio.create_task(ac.post("/api/instance/add", data=form))
+            for _ in range(50):
+                await asyncio.sleep(0.005)
+            assert not task_a.done()
+            assert not task_b.done()
+
+            lock.release()
+            response_a, response_b = await asyncio.gather(task_a, task_b)
+    finally:
+        if lock.locked():
+            lock.release()
+
+    assert sorted([response_a.status_code, response_b.status_code]) == [303, 400]
+    duplicate = response_a if response_a.status_code == 400 else response_b
+    assert duplicate.text == "Instance 'Extra' already exists"
+    assert "Extra" in multi_instance_app.state.settings.radarr
+
+
 def test_remove_instance_real_write_failure_logs_one_error(multi_instance_app):
     """A failed real write during removal logs exactly one error-level entry,
     naming the app, the instance and the system reason; the writer's own
