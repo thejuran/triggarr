@@ -1,0 +1,124 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "615a044a63bfd507aab81546a56fab7afb636f3e",
+  "inspected_base_sha": "3cede40099a1f8a5d6db45542e66c650bfa98952",
+  "pr_url": "none",
+  "scope": "Phase 87 local checkpoint: full net code/test changes and changed phase PLAN.md files against the specified base, with the requested exclusions.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found in the reviewed changes. Harness evidence for this exact head reports 3327 passed and 1 skipped. The independently run writer-lock audit passed with 8/8 references covered.",
+  "coverage": [
+    "Inspected all in-scope production changes in routes.py, config.py, state.py, and settings.html.",
+    "Inspected all changed tests, including write failures, logging ownership, concurrent removals and additions, cleanup failures, stale htmx requests, recovery warnings, and diagnostic-copy preservation.",
+    "Inspected all three changed Phase 87 plans, including executor instructions, acceptance checks, threat models, and deferred work.",
+    "Inspected the nine empty .gitkeep deletions; no other non-excluded planning changes were present.",
+    "Traced surrounding settings serialization, validation, save_settings, startup state loading, scheduled/manual search callers, and authentication/CSP middleware.",
+    "Checked escaping, failure-response disclosure, diagnostic-copy permissions and replacement behavior, and preservation of audit and acceptance checks.",
+    "Confirmed the base object exists and HEAD remained at the requested checkpoint."
+  ],
+  "exclusions": [
+    "Planning markdown other than the explicitly included *-PLAN.md files.",
+    "Raw review transcripts and generated review artifacts under .planning/**/codex/**.",
+    ".planning/**/*.jsonl."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkpoint before reviewing."
+    },
+    {
+      "command": "git cat-file -e 3cede40099a1f8a5d6db45542e66c650bfa98952",
+      "exit_code": 0,
+      "purpose": "Confirm the specified base exists."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..615a044a63bfd507aab81546a56fab7afb636f3e -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read the requested full code/test diff; truncated portions were subsequently inspected separately."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..615a044a63bfd507aab81546a56fab7afb636f3e -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read changed plan instructions; subsequently read plans separately to cover truncated output."
+    },
+    {
+      "command": "git diff --stat 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD; git diff --name-only 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- ':(glob).planning/**/*-PLAN.md'; cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inventory changes and inspect exact-head harness evidence."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- triggarr",
+      "exit_code": 0,
+      "purpose": "Inspect the complete production diff."
+    },
+    {
+      "command": "sed -n '1,279p' .planning/phases/87-settings-state-file-safety/87-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review removal safety plan."
+    },
+    {
+      "command": "sed -n '1547,1935p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Inspect failure and concurrency regression tests."
+    },
+    {
+      "command": "sed -n '160,235p' .planning/phases/87-settings-state-file-safety/87-01-PLAN.md; cat .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete removal-plan inspection and review UI plan."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review state recovery plan."
+    },
+    {
+      "command": "sed -n '1935,2350p' tests/test_web.py; git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_web.py | tail -90",
+      "exit_code": 0,
+      "purpose": "Inspect remaining changed web tests and audit-guard changes."
+    },
+    {
+      "command": "sed -n '600,800p' triggarr/web/routes.py; sed -n '875,945p' triggarr/web/routes.py; sed -n '1065,1115p' triggarr/web/routes.py; sed -n '129,220p' triggarr/config.py; sed -n '1,208p' triggarr/state.py; sed -n '300,410p' triggarr/state.py",
+      "exit_code": 0,
+      "purpose": "Trace settings mutation, atomic-write semantics, state migration, and cleanup."
+    },
+    {
+      "command": "sed -n '148,163p' .planning/phases/87-settings-state-file-safety/87-01-PLAN.md; rg -n 'load_state|def make_search_job|search_lock|instance_name not in|clients.*get' triggarr/search/scheduler.py; sed -n '70,180p' triggarr/search/scheduler.py; sed -n '460,530p' triggarr/search/scheduler.py; sed -n '1055,1145p' tests/test_web.py; rg -n 'class Settings|model_validator|validate_instance|def _settings_to_dict' triggarr/models/config.py triggarr/config.py; rg -n 'csrf|CSRF|AuthMiddleware|add_middleware' triggarr/web triggarr/__main__.py; git status --short",
+      "exit_code": 0,
+      "purpose": "Review callers, startup, fixture realism, validation, security boundaries, and workspace status."
+    },
+    {
+      "command": "sed -n '175,275p' triggarr/search/scheduler.py; sed -n '340,420p' triggarr/search/scheduler.py; rg -n 'async def run_radarr_cycle|instance_name|settings.radarr' triggarr/search/engine.py | head -35; sed -n '60,85p' triggarr/config.py; sed -n '186,235p' triggarr/models/config.py; sed -n '1,100p' triggarr/web/middleware.py; rg --files -g '*python*' -g 'pyvenv.cfg' -g 'AGENTS.md' -g 'SKILL.md' .venv .agents 2>/dev/null",
+      "exit_code": 0,
+      "purpose": "Trace queued searches, serialization, model invariants, middleware, and available local tooling."
+    },
+    {
+      "command": "rg -n 'async def run_radarr_cycle|instance_name not in|setdefault' triggarr/search/engine.py; sed -n '1150,1215p' triggarr/search/engine.py; sed -n '395,455p' triggarr/search/scheduler.py; sed -n '1120,1180p' triggarr/web/routes.py; ls .venv/bin/python*",
+      "exit_code": 0,
+      "purpose": "Check search guards, persistence, and manual-search interaction."
+    },
+    {
+      "command": "sed -n '135,148p' .planning/phases/87-settings-state-file-safety/87-01-PLAN.md; sed -n '957,1000p' triggarr/search/engine.py; sed -n '300,340p' triggarr/search/scheduler.py; cat tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Complete plan inspection and examine removed-instance guards and audit implementation."
+    },
+    {
+      "command": ".venv/bin/python -B tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Independently verify all eight settings-writer references remain under search_lock."
+    },
+    {
+      "command": "git diff --check 3cede40099a1f8a5d6db45542e66c650bfa98952..615a044a63bfd507aab81546a56fab7afb636f3e -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Check diff whitespace and reconfirm the checkpoint."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently rerun pytest because the sandbox is read-only and these tests create files. Reviewed the harness-provided successful run on the exact inspected head.",
+    "Did not execute browser interaction tests. The new UI regression tests primarily assert rendered markup and script text, rather than actual htmx swaps and event behavior.",
+    "Did not fault-inject every operating-system failure or cancellation timing; those paths were reviewed statically.",
+    "Initial large outputs were truncated; all in-scope changes were subsequently covered through narrower reads."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
