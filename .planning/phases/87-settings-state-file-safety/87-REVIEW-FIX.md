@@ -105,3 +105,108 @@ Behavior is unchanged: Triggarr still starts with default state on `OSError`, an
 _Fixed: 2026-11-15T23:58:23Z_
 _Fixer: Claude (bm-code-fixer)_
 _Iteration: 1_
+
+---
+
+# Fix round 2
+
+**Date:** 2026-11-15 (owner-approved scope of the same day)
+**Sources:** `.planning/phases/87-settings-state-file-safety/87-REVIEW.md` (iteration 2: WR-01, IN-01, SA-01) and Codex finding F001 (`.planning/phases/87-settings-state-file-safety/codex/f099c6a85711-phase-fix1-a1.last.json`)
+**Base:** `d524b1b7`, committed directly on `phase-87-settings-state-file-safety` (no worktree, no temp branch)
+
+**Summary:**
+- Items in scope: 5
+- Done: 4 (item 1 F001 `add_instance`, item 3 WR-01 + SA-01, item 4 IN-01, item 5 lock audit)
+- Stopped, nothing changed: 1 (item 2, the same stale-snapshot problem in `save_settings`; needs an owner ruling, see below)
+
+**Checks after the last code commit (`d5aa50c7`):**
+- `uv run pytest tests/ -x -q`: 3327 passed, 1 skipped (before this round: 3320 passed, 1 skipped)
+- `uv run ruff check triggarr/ tests/`: All checks passed
+- `uv run python tests/audit_lock_coverage.py`: covered: 8 / 8, uncovered: 0
+
+## Item 1: Codex F001, Add Instance during a removal's write brought the removed instance back
+
+**Status:** fixed: requires human verification (logic change in a concurrency path)
+**Files modified:** `triggarr/web/routes.py`, `tests/test_web.py`
+**Commits:** `8d04daa8` (failing tests), `bef326b9` (fix)
+
+**What changed:** In `add_instance`, the read of live settings, the duplicate check, the max-5 check, the build of the new settings and the pydantic validation moved inside `async with request.app.state.search_lock`. The two checks that need no settings (app type, instance-name validity) stay before the lock. Validation still happens before the write, and live settings are still swapped only after the write succeeds. Every response is unchanged (the three 400 bodies, the validation 400, the 303 redirect).
+
+**Tests added (`tests/test_web.py`):**
+- `test_add_instance_during_removal_write_does_not_resurrect_removed`: pauses the removal's writer, submits Add Instance, releases the writer, then asserts the removed instance is absent from the settings file, live settings, the client registry and state, and the added instance is present. Failed before the fix with the removed instance back in the settings file.
+- `test_add_instance_duplicate_check_uses_settings_current_under_lock`: two overlapping Adds of the same name now give one 303 and one "already exists" 400 (before the fix both returned 303).
+
+Neither test reads `asyncio.Lock._waiters` (the dependency recorded as IN-03).
+
+## Item 2: the same stale snapshot in `save_settings`
+
+**Status:** stopped as instructed; `save_settings` is untouched and no test was committed (a failing test without its fix would break the suite).
+
+**Why a reordering alone does not work.** Moving the build inside the lock is easy, but it does not give the intended result, because of how Save merges the form. For any app that has fields in the form, Save treats the form as the complete list of that app's instances:
+
+- An instance named in the form that is not in current settings is created as new, with a fresh id. This is pinned by `test_save_settings_new_form_instance_gets_id`.
+- An instance in current settings that is not named in the form is deleted. This is pinned by `test_save_settings_form_removal_invalidates_tag_cache`, and the route comments describe it as supported ("removed via form omission").
+
+So with the build moved inside the lock:
+
+- Save overlapping a removal: the form still carries the removed instance's fields, the instance is no longer in settings, and Save creates it again (new id; a blank API-key field can no longer be filled from the old value). The instance comes back, or the whole Save is turned away by validation. Which of the two happens was worked out by reading the code, not by running it.
+- Save overlapping an add: the form does not name the added instance, so Save deletes it.
+
+Getting "the instance stays removed and the rest of the Save applies" therefore needs a change to the merge rule, which is the stop condition for this item.
+
+**Options for the owner:**
+
+| Option | What the user gets | Cost and risk |
+|---|---|---|
+| A. Save only updates instances that exist when it runs. It never creates and never deletes; Add and Remove are the only ways to do that. | A Save can never bring a removed instance back or drop an added one, including from a page that was opened before the other change (stale tab), not only during an overlap. | Small code change, but it removes two behaviors that tests pin today (the two tests named above would change). Anything that posts to the Save endpoint to create or delete an instance would stop working. The Settings page itself does not appear to depend on either: its form lists every instance and has separate Add and Remove buttons (read from the template, not checked in a browser). |
+| B. Keep both behaviors; Save compares the settings it saw when the request arrived with the settings at the time it holds the lock. Instances removed in between are skipped, instances added in between are kept. | Fixes the overlap case only (a Save sent while a removal or add is still being written). A Save from a stale tab still brings a removed instance back, as today. | More logic in an already long function, harder to reason about and test. No existing test changes. |
+| C. Leave as is. | No change. The gap stays recorded in `.planning/backlog/MAINTENANCE.md`. | None now; the window is narrow for the overlap case, wider for the stale-tab case. |
+
+Recommendation: A, because it is the only one that also closes the stale-tab case and it is the simplest rule to explain. It is a product decision (it removes "delete by leaving out of the form" and "create through Save"), so it was not made here.
+
+## Item 3: iteration 2 WR-01 + SA-01, one error entry for every failed removal
+
+**Status:** fixed
+**Files modified:** `triggarr/config.py`, `triggarr/web/routes.py`, `tests/test_config.py`, `tests/test_web.py`
+**Commits:** `7add7be4` (failing tests), `a6043c37` (fix)
+
+**What changed:**
+- `triggarr/config.py`, `_atomic_toml_write`: `log_failure=False` now also suppresses the "Config write failed (unexpected error)" line. The only code change is an `if log_failure:` around that one log call, plus the docstring. With the default `log_failure=True` nothing changes for any other caller. The directory-fsync warning and the temp-file cleanup error still always log.
+- `triggarr/web/routes.py`, `remove_instance`: the two handlers around the write (`OSError`, then `Exception` with the round 1 warning) became one `except Exception` that logs the single error-level entry with the path, the app, the instance, the exception type and the reason, then returns the fixed D-05 response. It covers an `OSError` from the writer, any other exception from inside the writer, and the write never starting (`run_in_executor` raising). The warning that said "see the config write error logged just before this" is gone. `BaseException` and `CancelledError` are not caught. No response body changed.
+
+**Tests added:**
+- `tests/test_web.py`: `test_remove_instance_write_never_starts_logs_one_error` (plain and htmx): `run_in_executor` raises; one error entry naming the app, the instance and the reason, no warning line, fixed response, live state untouched, writer never called.
+- `tests/test_config.py`: `test_atomic_toml_write_log_failure_false_suppresses_unexpected_error_line`, and `test_atomic_toml_write_logs_unexpected_error_by_default` (passed before the fix; pins the exact default line).
+
+**Existing test changed (one):** `test_remove_instance_unexpected_real_write_error_logs_one_error` in `tests/test_web.py`. It encoded the round 1 workaround (the writer's line as the one error, plus a warning carrying the app and instance). It now asserts the single error names the app, the instance and the reason, that no "Config write failed" line appears, and that there is no warning line. Its other assertions are unchanged. All existing writer tests in `tests/test_config.py` pass unmodified.
+
+**Remaining edge, unchanged by design:** if the writer fails and deleting its temp file then also fails, the writer still logs its separate "Failed to clean up temp file" error, so that double failure gives two error entries.
+
+## Item 4: iteration 2 IN-01, unreadable-state-file warning wording
+
+**Status:** fixed (wording only)
+**Files modified:** `triggarr/state.py`, `tests/test_state.py`
+**Commits:** `81538003` (failing test), `d5aa50c7` (fix)
+
+**What changed:** the warning now ends "the next state save will try to replace it" instead of "will replace it". Nothing else in `load_state` changed.
+
+**Test added (`tests/test_state.py`):** `test_state_unreadable_warning_does_not_promise_replacement`.
+
+## Item 5: lock audit
+
+`uv run python tests/audit_lock_coverage.py` reports `covered: 8 / 8, uncovered: 0`, the same as before this round. `tests/audit_lock_coverage.py` and `tests/test_audit_lock_coverage.py` were not changed: the audit checks that every writer reference sits inside the lock, and moving `add_instance`'s reads inside the lock does not affect that.
+
+## Noticed, not changed (out of scope)
+
+- `save_settings` still builds from a pre-lock snapshot (item 2 above).
+- In `add_instance`, the "Invalid settings rejected" warning is now written while the lock is held. It only happens when validation fails and is one log line.
+- `add_instance` adds the new instance's state entry in memory but does not save the state file at that point (it is saved by the next state save). Same as before this round.
+- The docstring of `test_atomic_toml_write_log_failure_false_suppresses_primary_line` in `tests/test_config.py` says only the primary line is suppressed. The test still passes and was left unmodified as instructed; the sentence is now slightly out of date.
+- The frontmatter at the top of this file still describes round 1.
+- No review of these commits has been run. The BM review and the paired Codex pass on the new head are still to do.
+
+---
+
+_Fixed: 2026-11-15 (round 2)_
+_Fixer: Claude (bm-code-fixer)_
+_Iteration: 2_
