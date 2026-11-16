@@ -10,6 +10,9 @@ import asyncio
 import errno
 import json
 import re
+import threading
+import tomllib
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -22,6 +25,7 @@ from httpx import ASGITransport
 from loguru import logger
 
 from tests.conftest import make_settings
+from triggarr.config import _atomic_toml_write, _settings_to_dict
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import LogEntry, log_buffer
 from triggarr.models.config import APP_TYPES, GeneralConfig, InstanceConfig, Settings
@@ -2072,6 +2076,183 @@ async def test_remove_instance_write_never_starts_logs_one_error(multi_instance_
     assert "4K" in multi_instance_app.state.radarr_clients
     multi_instance_app.state.radarr_clients["4K"].close.assert_not_awaited()
     assert "4K" in multi_instance_app.state.triggarr_state["radarr"]
+
+
+@pytest.mark.parametrize(
+    ("hx_header", "expected_status"),
+    [(None, 500), ("true", 200)],
+    ids=["plain", "htmx"],
+)
+async def test_remove_instance_refused_thread_start_does_not_write_later(
+    multi_instance_app, hx_header, expected_status
+):
+    """When the operating system refuses the thread for the settings write,
+    the thread pool has already queued the write. The removal answers "not
+    removed", so that queued write must never run: after a later, successful
+    use of the same executor the settings file still contains the instance
+    (iteration 3 WR-01).
+
+    Nothing is mocked above the thread-start level: the real loop, a real
+    default executor and the real writer are used, and exactly one real
+    thread start is refused.
+    """
+    app = multi_instance_app
+    config_path = app.state.config_path
+    _atomic_toml_write(config_path, _settings_to_dict(app.state.settings))
+    on_disk_before = config_path.read_bytes()
+    assert "4K" in tomllib.loads(on_disk_before.decode())["radarr"]
+    original_4k = app.state.settings.radarr["4K"]
+
+    # A fresh default executor has no idle worker, so the removal's write
+    # must start a thread.
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=2, thread_name_prefix="wr01-refused"))
+
+    real_start = threading.Thread.start
+    refused: list[str] = []
+
+    def start_refusing_one(self):
+        if self.name.startswith("wr01-refused") and not refused:
+            refused.append(self.name)
+            raise RuntimeError("can't start new thread")
+        return real_start(self)
+
+    headers = {"HX-Request": hx_header} if hx_header else {}
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="DEBUG")
+    try:
+        with patch.object(threading.Thread, "start", start_refusing_one):
+            async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                response = await ac.post("/api/instance/remove/radarr/4K", headers=headers)
+
+            assert len(refused) == 1
+            # A later use of the same executor succeeds. Its worker thread
+            # takes jobs in the order they were queued, so anything the
+            # failed removal left behind has run by the time this returns.
+            await loop.run_in_executor(None, lambda: None)
+            assert len(refused) == 1
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == expected_status
+    assert "HX-Redirect" not in response.headers
+    assert "Location" not in response.headers
+    assert response.text == (
+        "'4K' was not removed: the settings file could not be saved. "
+        "Nothing was changed. Check the Triggarr log for details."
+    )
+
+    # The settings file still has the instance, byte for byte.
+    assert config_path.read_bytes() == on_disk_before
+    assert "4K" in tomllib.loads(config_path.read_text())["radarr"]
+    assert list(config_path.parent.glob("*.tmp")) == []
+
+    # So does the running app.
+    assert app.state.settings.radarr["4K"] is original_4k
+    app.state.scheduler.remove_job.assert_not_called()
+    assert "4K" in app.state.radarr_clients
+    app.state.radarr_clients["4K"].close.assert_not_awaited()
+    assert "4K" in app.state.triggarr_state["radarr"]
+
+    # One error entry saying the instance was kept; nothing says it was removed.
+    notable = [r for r in records if r["level"].no >= logger.level("WARNING").no]
+    assert len(notable) == 1
+    assert notable[0]["level"].name == "ERROR"
+    message = notable[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "instance kept" in message
+    assert "can't start new thread" in message
+    assert not any("Removed" in r["message"] for r in records)
+
+
+async def test_remove_instance_refused_thread_start_with_write_already_running_reports_the_write(
+    multi_instance_app,
+):
+    """The thread start is refused, but a worker that was busy at that moment
+    has already picked the queued write up and is in the middle of it. The
+    write cannot be called off any more, so the route must not answer "not
+    removed": it waits for the write (without blocking the event loop) and
+    reports what the write actually did. Here the write succeeds, so the
+    removal succeeds and the file and the running app agree (iteration 3
+    WR-01, the window the abandoned flag alone leaves open).
+    """
+    app = multi_instance_app
+    config_path = app.state.config_path
+    _atomic_toml_write(config_path, _settings_to_dict(app.state.settings))
+
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=2, thread_name_prefix="wr01-running"))
+
+    release_busy_worker = threading.Event()
+    write_started = threading.Event()
+    let_write_finish = threading.Event()
+
+    # One worker is busy, so the removal's write is queued behind it and the
+    # pool tries to start a second thread.
+    busy = loop.run_in_executor(None, release_busy_worker.wait, 10)
+
+    def slow_writer(*args, **kwargs):
+        write_started.set()
+        assert let_write_finish.wait(10)
+        return _atomic_toml_write(*args, **kwargs)
+
+    real_start = threading.Thread.start
+    refused: list[str] = []
+
+    def start_refusing_after_job_is_taken(self):
+        if armed and self.name.startswith("wr01-running") and not refused:
+            refused.append(self.name)
+            # The busy worker frees up and takes the queued write before the
+            # refusal reaches the route.
+            release_busy_worker.set()
+            assert write_started.wait(10)
+            raise RuntimeError("can't start new thread")
+        return real_start(self)
+
+    armed = False
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="WARNING")
+    try:
+        with (
+            patch.object(threading.Thread, "start", start_refusing_after_job_is_taken),
+            patch("triggarr.web.routes._atomic_toml_write", side_effect=slow_writer),
+        ):
+            armed = True
+            async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                request_task = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+                try:
+                    # The write is still running: no answer yet, and the event
+                    # loop keeps turning (these sleeps return).
+                    for _ in range(20):
+                        await asyncio.sleep(0.005)
+                    assert len(refused) == 1
+                    assert not request_task.done()
+                    assert "4K" in app.state.settings.radarr
+                finally:
+                    let_write_finish.set()
+                response = await request_task
+            await busy
+    finally:
+        release_busy_worker.set()
+        let_write_finish.set()
+        logger.remove(handler_id)
+
+    # The write went through, so the removal is real and reported as such.
+    assert response.status_code == 303
+    assert "4K" not in tomllib.loads(config_path.read_text())["radarr"]
+    assert "4K" not in app.state.settings.radarr
+    assert "4K" not in app.state.radarr_clients
+    assert "4K" not in app.state.triggarr_state["radarr"]
+
+    # Not a failed removal: no error entry. The refused thread start is still
+    # on record, as one warning naming the app and the instance.
+    assert [r["message"] for r in records if r["level"].name == "ERROR"] == []
+    warnings = [r["message"] for r in records if r["level"].name == "WARNING"]
+    assert len(warnings) == 1
+    assert "radarr" in warnings[0]
+    assert "4K" in warnings[0]
+    assert "can't start new thread" in warnings[0]
 
 
 def test_remove_instance_settings_build_failure_logs_one_error(multi_instance_app):
