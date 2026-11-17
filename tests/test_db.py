@@ -8,6 +8,7 @@ signatures, and multi-instance scoping.
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 import aiosqlite
@@ -16,6 +17,7 @@ from loguru import logger
 
 from tests.migration_faults import STANDARD_MAPPING, original_projection, seed_v9_db, snapshot
 from triggarr.db import (
+    MIGRATIONS,
     OwnedGrab,
     OwnedGrabRecord,
     PendingCapExceeded,
@@ -31,6 +33,7 @@ from triggarr.db import (
     init_db,
     insert_search_entry,
     migrate_from_state,
+    run_migrations,
     update_outcome_and_stats,
 )
 
@@ -2568,3 +2571,204 @@ async def test_pending_cap_counts_active_partial_rows(tmp_path):
         )
     assert await _ids(db) == before  # rejected with no write
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Bounded pre-upgrade backups through a crash loop (BKUP-01/BKUP-02, Phase 88)
+# ---------------------------------------------------------------------------
+
+
+async def test_backup_bound_holds_through_repeated_failed_attempts(tmp_path, monkeypatch):
+    """BKUP-01/D-05: 5 consecutive failed upgrade attempts from v9 never leave more
+    than 3 timestamped retry backups, and the canonical backup is untouched."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    original_bytes = db_path.read_bytes()
+
+    async def _always_fails(db, **kwargs):
+        raise RuntimeError("simulated migration failure")
+
+    monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        canonical = db_path.with_suffix(".v9-backup")
+        prev_timestamped: set[str] = set()
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                await run_migrations(db, db_path)
+            current_timestamped = {
+                p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")
+            }
+            assert len(current_timestamped) <= 3, (
+                f"Never more than 3 timestamped v9 backups after one attempt; got {current_timestamped}"
+            )
+            new_names = current_timestamped - prev_timestamped
+            for name in new_names:
+                assert (db_path.parent / name).exists(), f"{name} appeared this attempt but is already gone"
+            prev_timestamped = current_timestamped
+
+        assert canonical.exists(), "Canonical v9 backup must survive 5 failed attempts"
+        assert canonical.read_bytes() == original_bytes, "Canonical backup must stay byte-identical"
+        final_timestamped = {
+            p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")
+        }
+        assert len(final_timestamped) == 3, f"Expected exactly 3 timestamped v9 backups, got {final_timestamped}"
+        assert db_path.with_suffix(".v0-backup").exists(), "Unrelated v0 backup must be untouched"
+        assert await get_schema_version(db) == 9
+    finally:
+        await db.close()
+
+
+async def test_backup_crash_loop_then_success_keeps_four_files(tmp_path, monkeypatch):
+    """BKUP-01/D-05/D-06: 5 failed attempts from v9 then a 6th that succeeds leaves
+    schema at v10 and exactly 4 v9 backup files (canonical + 3 timestamped)."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    original_v10_entry = MIGRATIONS[10]
+
+    async def _always_fails(db, **kwargs):
+        raise RuntimeError("simulated migration failure")
+
+    monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                await run_migrations(db, db_path)
+
+        monkeypatch.setitem(MIGRATIONS, 10, original_v10_entry)
+        await run_migrations(db, db_path)
+
+        assert await get_schema_version(db) == 10
+        v9_backup_files = [
+            p
+            for p in db_path.parent.iterdir()
+            if p.name == "test.v9-backup" or p.name.startswith("test.v9-backup-")
+        ]
+        assert len(v9_backup_files) == 4, f"Expected exactly 4 v9 backup files, got {v9_backup_files}"
+    finally:
+        await db.close()
+
+
+def test_prune_orders_by_filename_stamp_not_mtime(tmp_path):
+    """BKUP-02/D-03: retention order is decided by the filename stamp, never mtime."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    base_mtime = 1_700_000_000.0
+    # Oldest-named file gets the NEWEST mtime; newest-named gets the OLDEST mtime.
+    for rank, path in enumerate(paths):
+        mtime = base_mtime + (len(paths) - rank) * 100
+        os.utime(path, (mtime, mtime))
+
+    just_written = paths[-1]
+    _prune_timestamped_backups(db_path, 9, just_written)
+
+    remaining = {p.name for p in paths if p.exists()}
+    assert remaining == {paths[2].name, paths[3].name, paths[4].name}
+    assert not paths[0].exists(), "Oldest-named file must be pruned despite the newest mtime"
+    assert not paths[1].exists()
+    assert canonical.exists()
+
+
+def test_prune_never_deletes_just_written_even_if_clock_went_back(tmp_path):
+    """BKUP-02/D-03: the just-written backup is always kept, even if its stamp sorts oldest."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    future_stamps = [f"20990101T00000000000{i}Z" for i in range(1, 4)]
+    future_paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in future_stamps]
+    for p in future_paths:
+        p.write_bytes(b"backup")
+
+    just_written = db_path.with_suffix(".v9-backup-20260101T000000000000Z")
+    just_written.write_bytes(b"backup")
+
+    _prune_timestamped_backups(db_path, 9, just_written)
+
+    assert just_written.exists(), "Just-written backup must never be pruned"
+    assert not future_paths[0].exists(), "Oldest of the 2099 files must be pruned"
+    assert future_paths[1].exists()
+    assert future_paths[2].exists()
+    remaining_timestamped = [p for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")]
+    assert len(remaining_timestamped) == 3
+
+
+def test_prune_ignores_other_versions_and_non_matching_names(tmp_path):
+    """BKUP-02/D-07: other schema versions and non-matching names are never deleted."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    valid_stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    valid_paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in valid_stamps]
+    for p in valid_paths:
+        p.write_bytes(b"backup")
+
+    decoy_v0 = db_path.with_suffix(".v0-backup")
+    decoy_v0.write_bytes(b"decoy")
+    decoy_v8 = db_path.with_suffix(f".v8-backup-{valid_stamps[0]}")
+    decoy_v8.write_bytes(b"decoy")
+    decoy_v90 = db_path.with_suffix(f".v90-backup-{valid_stamps[0]}")
+    decoy_v90.write_bytes(b"decoy")
+    decoy_mycopy = db_path.with_suffix(".v9-backup-mycopy")
+    decoy_mycopy.write_bytes(b"decoy")
+    decoy_bak = db_path.with_suffix(f".v9-backup-{valid_stamps[0]}.bak")
+    decoy_bak.write_bytes(b"decoy")
+    decoy_lowercase_z = db_path.with_suffix(".v9-backup-20260101T000000000006z")
+    decoy_lowercase_z.write_bytes(b"decoy")
+    decoy_dir = db_path.with_suffix(".v9-backup-20240101T000000000001Z")
+    decoy_dir.mkdir()
+
+    just_written = valid_paths[-1]
+    _prune_timestamped_backups(db_path, 9, just_written)
+
+    for decoy in (decoy_v0, decoy_v8, decoy_v90, decoy_mycopy, decoy_bak, decoy_lowercase_z, decoy_dir):
+        assert decoy.exists(), f"{decoy} should never be touched"
+
+    remaining_valid = [p for p in valid_paths if p.exists()]
+    assert len(remaining_valid) == 3, f"Expected exactly 3 valid v9 backups remaining, got {remaining_valid}"
+
+
+def test_prune_logs_one_info_line_per_deleted_backup(tmp_path):
+    """BKUP-02/D-08: each deleted retry backup logs one INFO line naming the file."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    just_written = paths[-1]
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="INFO")
+    try:
+        _prune_timestamped_backups(db_path, 9, just_written)
+    finally:
+        logger.remove(handler_id)
+
+    log_text = sink.getvalue()
+    info_lines = [line for line in log_text.splitlines() if line.startswith("INFO")]
+    assert len(info_lines) == 2, f"Expected exactly 2 INFO lines, got: {log_text!r}"
+    deleted_names = {paths[0].name, paths[1].name}
+    for line in info_lines:
+        assert any(name in line for name in deleted_names), f"INFO line must name a deleted file: {line!r}"
+        assert "3 most recent" in line, f"INFO line must state the 3 most recent are kept: {line!r}"
+    assert "WARNING" not in log_text
