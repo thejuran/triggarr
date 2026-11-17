@@ -237,7 +237,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 **Goal:** Keep scheduled searching and saved state correct through failed writes, ambiguous network responses, partial startup and shutdown.
 
 - [x] **Phase 87: Settings & State-File Safety** (merged 2026-11-16, PR #62) - A failed settings write during instance removal never corrupts live state, and a non-object state file recovers instead of crashing
-- [ ] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix (both plans executed and verified locally 2026-11-17; PR and owner acceptance pending)
+- [ ] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix (both plans executed and verified locally 2026-11-17; PR #63 open in review, owner acceptance pending)
 - [ ] **Phase 89: Startup & Shutdown Resource Cleanup** - A partial startup closes what it opened, and one failed client close never blocks the rest from closing
 - [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name
 - [ ] **Phase 91: Search-Command Delivery Confidence** - A timed-out search command is never blindly resent, and an unconfirmed outcome is tracked honestly instead of silently passing or failing
