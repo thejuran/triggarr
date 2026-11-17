@@ -187,28 +187,49 @@ def _prune_timestamped_backups(db_path: Path, current: int, just_written: Path) 
     ordered by the stamp embedded in the file name, never by file mtime,
     because ``shutil.copy2`` preserves the source database's mtime rather
     than the backup's own creation time (D-03).
+
+    A failure while listing the directory or deleting a stale file is
+    logged at warning level and never blocks the caller (D-04/D-09): a
+    failed deletion does not stop the remaining stale files from being
+    tried.
     """
     canonical_name = db_path.with_suffix(f".v{current}-backup").name
     prefix = canonical_name + "-"
 
     candidates: list[tuple[str, Path]] = []
-    for entry in db_path.parent.iterdir():
-        if entry == just_written:
-            continue
-        if not entry.name.startswith(prefix):
-            continue
-        stamp = entry.name[len(prefix) :]
-        if not _BACKUP_STAMP_RE.fullmatch(stamp):
-            continue
-        if not entry.is_file():
-            continue
-        candidates.append((stamp, entry))
+    try:
+        for entry in db_path.parent.iterdir():
+            if entry == just_written:
+                continue
+            if not entry.name.startswith(prefix):
+                continue
+            stamp = entry.name[len(prefix) :]
+            if not _BACKUP_STAMP_RE.fullmatch(stamp):
+                continue
+            if not entry.is_file():
+                continue
+            candidates.append((stamp, entry))
+    except OSError as exc:
+        logger.warning(
+            "Could not check for old retry backups in {path}: {exc}",
+            path=db_path.parent,
+            exc=f"{type(exc).__name__}: {exc}",
+        )
+        return
 
     # Fixed-width stamp -> lexicographic order is chronological order.
     candidates.sort(key=lambda pair: pair[0], reverse=True)
 
     for _stamp, stale_path in candidates[_MAX_RETAINED_TIMESTAMPED_BACKUPS - 1 :]:
-        stale_path.unlink(missing_ok=True)
+        try:
+            stale_path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "Could not remove old retry backup {path}: {exc}",
+                path=stale_path,
+                exc=f"{type(exc).__name__}: {exc}",
+            )
+            continue
         logger.info(
             "Removed old retry backup {path}; keeping the original backup and the {n} most recent",
             path=stale_path,
