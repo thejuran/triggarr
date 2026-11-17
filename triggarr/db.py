@@ -178,8 +178,12 @@ async def _apply_atomic_migration(
         raise
 
 
-def _prune_timestamped_backups(db_path: Path, current: int, just_written: Path) -> None:
-    """Keep at most the N most recent timestamped retry backups for `current`.
+def _prune_timestamped_backups(db_path: Path, current: int, just_written: Path | None) -> None:
+    """Keep at most N - 1 timestamped retry backups for `current` besides `just_written`.
+
+    Called with ``just_written=None`` before a new retry backup is copied, this
+    leaves N - 1 copies so the new one brings the total back to N; called with
+    the new backup after the copy, it keeps that backup plus the N - 1 newest.
 
     Only files named exactly ``<db stem>.v{current}-backup-<stamp>``, where
     ``<stamp>`` fully matches the ``%Y%m%dT%H%M%S%fZ`` format, are ever
@@ -239,6 +243,54 @@ def _prune_timestamped_backups(db_path: Path, current: int, just_written: Path) 
         )
 
 
+def _remove_abandoned_partial_backups(db_path: Path, current: int) -> None:
+    """Delete retry-backup staging files for `current` left by an interrupted copy.
+
+    Only files named exactly ``<db stem>.v{current}-backup-<stamp>.partial``,
+    where ``<stamp>`` fully matches the ``%Y%m%dT%H%M%S%fZ`` format, are
+    deleted. A process killed mid-copy skips the in-process cleanup, so these
+    would otherwise pile up outside the retention cap. Triggarr runs as a
+    single process and this runs at startup before anything is served, so no
+    other copy can be writing one of these files at the same time.
+
+    A failure while listing or deleting is logged at warning level and never
+    blocks the caller (D-04/D-09).
+    """
+    prefix = db_path.with_suffix(f".v{current}-backup").name + "-"
+    suffix = ".partial"
+
+    abandoned: list[Path] = []
+    try:
+        for entry in db_path.parent.iterdir():
+            name = entry.name
+            if not (name.startswith(prefix) and name.endswith(suffix)):
+                continue
+            if not _BACKUP_STAMP_RE.fullmatch(name[len(prefix) : -len(suffix)]):
+                continue
+            if not entry.is_file():
+                continue
+            abandoned.append(entry)
+    except OSError as exc:
+        logger.warning(
+            "Could not check for incomplete retry backups in {path}: {exc}",
+            path=db_path.parent,
+            exc=f"{type(exc).__name__}: {exc}",
+        )
+        return
+
+    for stale_path in abandoned:
+        try:
+            stale_path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "Could not remove incomplete retry backup {path}: {exc}",
+                path=stale_path,
+                exc=f"{type(exc).__name__}: {exc}",
+            )
+            continue
+        logger.info("Removed incomplete retry backup {path} left by an interrupted copy", path=stale_path)
+
+
 async def run_migrations(
     db: aiosqlite.Connection,
     db_path: Path,
@@ -277,6 +329,14 @@ async def run_migrations(
     earliest_backup: Path | None = None
     if db_path.exists():
         if backup_path.exists():
+            # Make room before copying, so a nearly full disk can still take the
+            # new copy: drop abandoned staging files and keep only N - 1 retry
+            # backups (the canonical backup is never touched). Safe because
+            # Triggarr is a single process and this runs at startup before
+            # serving, so no other copy can be in progress. Failures are logged
+            # and never block startup.
+            _remove_abandoned_partial_backups(db_path, current)
+            _prune_timestamped_backups(db_path, current, None)
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
             timestamped_path = db_path.with_suffix(f".v{current}-backup-{stamp}")
             # Write-then-rename: the ".partial" name never matches the stamp
@@ -302,6 +362,8 @@ async def run_migrations(
                 earlier=backup_path,
             )
             earliest_backup = backup_path
+            # Usually a no-op after the pre-copy prune; kept so the cap of N
+            # still holds if a deletion failed transiently before the copy.
             _prune_timestamped_backups(db_path, current, timestamped_path)
         else:
             shutil.copy2(db_path, backup_path)

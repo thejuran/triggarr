@@ -2653,7 +2653,8 @@ async def test_backup_crash_loop_then_success_keeps_four_files(tmp_path, monkeyp
 
 async def test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_backups(tmp_path, monkeypatch):
     """WR-01: a retry-backup copy that fails partway (disk full) leaves no file with a
-    timestamped-backup name, and the next attempt still keeps the 3 good backups."""
+    timestamped-backup name and keeps the 2 newest good backups (pruned before the
+    copy to make room); the next attempt keeps those plus its new backup."""
     db_path = await seed_v9_db(tmp_path, monkeypatch)
     canonical = db_path.with_suffix(".v9-backup")
     shutil.copy2(db_path, canonical)
@@ -2675,9 +2676,10 @@ async def test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_back
             await run_migrations(db, db_path)
 
         leftovers = [p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")]
-        assert sorted(leftovers) == sorted(p.name for p in good_paths), (
-            f"A failed copy must leave no new backup-named file; got {leftovers}"
+        assert sorted(leftovers) == sorted(p.name for p in good_paths[1:]), (
+            f"A failed copy must leave no new backup-named file and the 2 newest good backups; got {leftovers}"
         )
+        assert canonical.exists()
 
         # A leftover temporary file (e.g. a hard kill mid-copy) must never count
         # toward the 3 retained backups on the next attempt.
@@ -2705,6 +2707,138 @@ async def test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_back
         assert canonical.exists()
     finally:
         await db.close()
+
+
+def _v9_backup_names(db_path: Path) -> list[str]:
+    return sorted(p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-"))
+
+
+async def test_retry_backup_fits_on_full_disk_after_pre_copy_cleanup(tmp_path, monkeypatch):
+    """WR-01/F001: on a disk with room for only 3 retry-backup files, the old copies and
+    abandoned staging files are cleared BEFORE the new copy, so startup proceeds."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    good_paths = [db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z") for i in range(1, 4)]
+    for p in good_paths:
+        shutil.copy2(db_path, p)
+    stale_partials = [db_path.with_suffix(f".v9-backup-2021010{i}T000000000000Z.partial") for i in range(1, 3)]
+    for p in stale_partials:
+        p.write_bytes(b"partial")
+
+    original_copy2 = shutil.copy2
+
+    def _copy2_on_tight_disk(src, dst, *args, **kwargs):
+        # The disk only holds the canonical backup plus 3 retry-backup files.
+        if len([n for n in _v9_backup_names(db_path) if n != Path(dst).name]) >= 3:
+            Path(dst).write_bytes(b"partial")
+            raise OSError(28, "No space left on device")
+        return original_copy2(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", _copy2_on_tight_disk)
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        await run_migrations(db, db_path)  # must not raise ENOSPC
+        assert await get_schema_version(db) == 10
+    finally:
+        await db.close()
+
+    remaining = _v9_backup_names(db_path)
+    assert not any(n.endswith(".partial") for n in remaining), f"Stale staging files must be reclaimed: {remaining}"
+    assert len(remaining) == 3, f"Expected 3 retry backups after the copy, got {remaining}"
+    assert good_paths[0].name not in remaining
+    assert good_paths[1].name in remaining
+    assert good_paths[2].name in remaining
+    assert canonical.exists()
+
+
+async def test_restart_reclaims_abandoned_partials_and_keeps_newest_backups(tmp_path, monkeypatch):
+    """F001: abandoned ``.partial`` files from hard-killed copies are reclaimed on the next
+    start; the newest valid backups and the canonical backup survive, and look-alike files
+    for other versions or non-stamp names are never touched."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    canonical_bytes = canonical.read_bytes()
+    good_paths = [db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z") for i in range(1, 4)]
+    for p in good_paths:
+        shutil.copy2(db_path, p)
+    abandoned = [
+        db_path.with_suffix(".v9-backup-20190101T000000000000Z.partial"),
+        db_path.with_suffix(".v9-backup-20200102T120000000000Z.partial"),
+        db_path.with_suffix(".v9-backup-20990101T000000000000Z.partial"),
+    ]
+    for p in abandoned:
+        p.write_bytes(b"partial")
+    decoys = [
+        db_path.with_suffix(".v8-backup-20200101T000000000000Z.partial"),
+        db_path.with_suffix(".v9-backup-mycopy.partial"),
+    ]
+    for p in decoys:
+        p.write_bytes(b"decoy")
+
+    async def _always_fails(db, **kwargs):
+        raise RuntimeError("simulated migration failure")
+
+    monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        with pytest.raises(RuntimeError):
+            await run_migrations(db, db_path)
+    finally:
+        await db.close()
+
+    for p in abandoned:
+        assert not p.exists(), f"Abandoned staging file {p.name} must be reclaimed"
+    for p in decoys:
+        assert p.exists(), f"{p.name} does not match the exact v9 staging pattern and must be untouched"
+    valid = [n for n in _v9_backup_names(db_path) if not n.endswith(".partial")]
+    assert len(valid) == 3, f"Expected 3 valid retry backups, got {valid}"
+    assert good_paths[0].name not in valid
+    assert good_paths[1].name in valid
+    assert good_paths[2].name in valid
+    assert canonical.read_bytes() == canonical_bytes, "Canonical backup must stay byte-identical"
+
+
+async def test_stale_partial_removal_failure_logs_warning_and_does_not_block(tmp_path, monkeypatch):
+    """F001/D-04/D-09: failing to delete an abandoned staging file logs one WARNING naming
+    it, and the backup and migration still go ahead."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    stale_partial = db_path.with_suffix(".v9-backup-20200101T000000000000Z.partial")
+    stale_partial.write_bytes(b"partial")
+
+    original_unlink = Path.unlink
+
+    def _failing_unlink(self, *args, **kwargs):
+        if self.name == stale_partial.name:
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _failing_unlink)
+
+    db = await aiosqlite.connect(db_path)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="WARNING")
+    try:
+        await run_migrations(db, db_path)  # must not raise
+        assert await get_schema_version(db) == 10
+    finally:
+        logger.remove(handler_id)
+        await db.close()
+
+    log_text = sink.getvalue()
+    warning_lines = [line for line in log_text.splitlines() if line.startswith("WARNING")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {log_text!r}"
+    assert stale_partial.name in warning_lines[0]
+    assert "PermissionError" in warning_lines[0]
+    assert "ERROR" not in log_text
+    valid = [n for n in _v9_backup_names(db_path) if not n.endswith(".partial")]
+    assert len(valid) == 1, f"The new retry backup must still be written, got {valid}"
+    assert canonical.exists()
 
 
 def test_prune_orders_by_filename_stamp_not_mtime(tmp_path):
