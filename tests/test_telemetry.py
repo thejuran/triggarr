@@ -24,6 +24,15 @@ from triggarr.web.routes import router
 
 def test_telemetry_env_vars_do_not_crash_startup(tmp_path, monkeypatch, caplog):
     """TELEM-01: FASTAPI_OTEL_AUTO_CONFIGURE + an OTLP endpoint must not crash startup."""
+    # Clear OTEL variables from the runner's environment that would skip or change
+    # FastAPI's auto-configure path (SDK disabled, exporters set to none, per-signal
+    # endpoints or protocols overriding the generic ones).
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL", raising=False)
+    for signal in ("TRACES", "METRICS", "LOGS"):
+        monkeypatch.delenv(f"OTEL_{signal}_EXPORTER", raising=False)
+        monkeypatch.delenv(f"OTEL_EXPORTER_OTLP_{signal}_ENDPOINT", raising=False)
+        monkeypatch.delenv(f"OTEL_EXPORTER_OTLP_{signal}_PROTOCOL", raising=False)
     monkeypatch.setenv("FASTAPI_OTEL_AUTO_CONFIGURE", "true")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
 
