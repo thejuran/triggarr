@@ -1,6 +1,8 @@
 ---
 phase: 88-bounded-upgrade-backups-telemetry-regression
-reviewed: 2026-11-16T00:00:00Z
+reviewed: 2026-11-17T03:21:10Z
+reviewed_head: fbc812eba07f674069e04486f369524e58927298
+diff_base: a1b4b65c
 depth: standard
 files_reviewed: 4
 files_reviewed_list:
@@ -10,138 +12,139 @@ files_reviewed_list:
   - triggarr/db.py
 findings:
   critical: 0
-  warning: 2
-  info: 4
-  total: 6
+  warning: 1
+  info: 3
+  total: 4
 status: issues_found
 ---
 
-# Phase 88: Code Review Report
+# Phase 88: Code Review Report (re-review after fix round 1)
 
-**Reviewed:** 2026-11-16T00:00:00Z
+**Reviewed:** 2026-11-17T03:21:10Z
+**Reviewed head:** `fbc812eba07f674069e04486f369524e58927298`
+**Diff range:** `a1b4b65c..fbc812eb` (fix commits `6e94aaea..d7cc03a2` read closely)
 **Depth:** standard
 **Files Reviewed:** 4
 **Status:** issues_found
-**Diff range:** `a1b4b65c..HEAD`
 
 ## Summary
 
-Phase 88 caps timestamped pre-upgrade retry backups at 3 per schema version (`_prune_timestamped_backups` in `triggarr/db.py`), adds 9 tests for it, adds a startup regression test for the FastAPI OpenTelemetry auto-configure variables, and adds one README sentence.
+This is a re-review of the whole Phase 88 diff after the first fix round. The phase does three things:
+- It caps timestamped pre-upgrade retry backups at 3 per schema version (`_prune_timestamped_backups`).
+- It writes each retry backup to a `.partial` file and then renames it (the WR-01 fix).
+- It pins startup against FastAPI's OpenTelemetry auto-configure variables and documents that in the README.
 
-The pruning logic matches the plan:
-- Candidates are matched by an exact prefix plus `fullmatch` on the stamp.
-- They are listed with `iterdir`, not glob.
-- The canonical backup can never match.
-- The just-written file is excluded.
-- Ordering uses the filename stamp, not mtime.
-- OSError on listing or unlink is logged once at WARNING and never re-raised.
+The fixes for WR-01, WR-02, IN-01, IN-02 and IN-03 are correct:
+- The `.partial` name can never fully match `[0-9]{8}T[0-9]{12}Z`, so pruning can never count it.
+- If the copy fails, the cleanup removes the temporary file and re-raises the original exception. A bare `raise` after the inner `try/except` re-raises the outer exception, so the original error is not lost.
+- The success path makes no extra delete call.
+- The telemetry test now fails if FastAPI's auto-configure path does not run.
 
-I found no correctness bug on the normal path. The 12 focused tests pass and ruff is clean.
+I checked the FastAPI 0.162.4 source (`fastapi/telemetry/_runtime.py`). The startup failure is caught inside FastAPI's lifespan wrapper and logged at WARNING through the stdlib `fastapi` logger. The assertion matches that message.
 
-Main concerns:
-- **WR-01:** the backup is copied straight to its final name and pruned afterwards. A copy that fails partway (for example, disk full) leaves a truncated file. Later pruning counts that file as one of the "3 most recent" and can delete good backups to keep it.
-- **WR-02:** the telemetry test never checks that FastAPI's auto-configure path actually ran. It would still pass if FastAPI renamed or dropped the variable.
+Checks on this head: the 18 focused backup, prune and telemetry tests pass, and `ruff check triggarr/ tests/` is clean. I did not re-run the full suite. The fix report records 3347 passed, 1 skipped.
+
+What remains:
+- **WR-01 (carried forward, the optional part of the original WR-01):** pruning runs only after a successful copy, so it cannot free disk space when the disk is full.
+- **Three Info items:** a README claim that is only partly accurate, a telemetry test that depends on the runner's environment, and two test-coverage gaps around the new cleanup branch.
+
+## Original vs. refreshed findings
+
+| Prior ID | Prior title (short) | Status at `fbc812eb` | Evidence |
+|---|---|---|---|
+| WR-01 | Truncated retry backup counted as one of the 3 most recent | **Fixed**, with a residual carried forward as the new WR-01 | `6e94aaea`: write to `.partial`, then `replace`, and clean up on failure (`triggarr/db.py:285-298`). The new test `test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_backups` covers it. The optional "prune before copy / peak disk" part was not done and is now the new WR-01. |
+| WR-02 | Telemetry test cannot tell whether auto-configure ran | **Fixed** | `621aebb0` asserts `"automatic telemetry configuration failed"` in `caplog` (`tests/test_telemetry.py:37-42`). Residual: the test builds its own `FastAPI(lifespan=...)`. Production (`triggarr/__main__.py:68`) uses the same constructor with no `telemetry=` argument today, so I accept that and do not count it. |
+| IN-01 | Stamp regex accepts non-ASCII digits | **Fixed** | `579d734e`: `[0-9]{8}T[0-9]{12}Z` (`triggarr/db.py:119`). An Arabic-Indic decoy was added to the test. |
+| IN-02 | End-to-end pruning test accepts any WARNING | **Fixed** | `6387334c`: the test requires `"Could not remove old retry backup"` (`tests/test_db.py:2965-2967`). |
+| IN-03 | README omits the startup warning | **Fixed**, with a refinement in the new IN-01 | `d7cc03a2` adds the warning sentence (`README.md:215`). The sentence overstates when the warning appears and what it says (new IN-01). |
+| IN-04 | Retry backups never cleaned after a successful upgrade | **Carried forward, accepted by owner ruling** (not counted) | Unchanged by design (D-06). The owner kept D-06, and the cleanup is in the backlog together with stale `.partial` files. |
+| CV-01 | README file-name casing (tool output) | **False positive** (not counted) | The convention checker emitted it again at this head (see Conventions). |
+| SA-01 | No cleanup of retry backups after success | **Resolved by owner ruling: keep D-06, defer to backlog** | The backlog item "Remove retry backups once an upgrade succeeds" covers timestamped copies and stale `.partial` files. No code change is expected in this phase. |
+
+## Narrative Findings (AI reviewer)
 
 ## Warnings
 
-### WR-01: A truncated retry backup from a failed copy is kept as one of the "3 most recent", and good backups are deleted to make room for it
+### WR-01: Pruning runs only after a successful copy, so it cannot free space when the disk is full and a restart fails at the backup step
 
-**File:** `triggarr/db.py:277-287` (with `triggarr/db.py:199-210`)
-**Issue:** `run_migrations` writes the retry backup straight to its final name, `shutil.copy2(db_path, timestamped_path)`. Pruning runs only after that copy succeeds. If `copy2` fails partway, for example with ENOSPC (the situation a crash loop that fills the disk is likely to cause), `copyfile` leaves a partial `test.v9-backup-<stamp>` file behind and pruning never runs for that attempt. On the next attempt the partial file:
-- has a valid stamp,
-- passes `is_file()`, and
-- is newer than the older good copies.
+**File:** `triggarr/db.py:279-305`
+**Issue:** On the retry path, the order is:
+1. copy to `.partial`
+2. rename
+3. `_prune_timestamped_backups`
 
-So `_prune_timestamped_backups` keeps it as one of the 3 retained backups and deletes older, intact ones. The INFO line then says it is "keeping ... the 3 most recent", which suggests to an operator that those copies can be used for recovery. The canonical `.v9-backup` is still intact, so the original data is not lost. Still, the retry set can quietly fill with corrupt files.
+At step 1, the disk holds the canonical backup, the 3 retained timestamped copies, and the new copy in progress. That is one full database copy more than the cap the phase promises. If the disk cannot hold that extra copy, `copy2` raises ENOSPC. The `.partial` is cleaned up correctly, but the exception leaves `run_migrations` before pruning runs, so the 3 old copies are never reduced.
 
-Related: the copy happens before the prune, so peak disk use during an attempt is canonical plus 4 timestamped copies, not plus 3. That is the moment a nearly full disk is most likely to fail.
+Every later start repeats this. That includes the start after the user installs a release that fixes the failing migration. Triggarr does not start again until someone deletes backup files by hand. The phase's own retained copies are what fill the space, and the pruning meant to bound them never gets a chance to run.
 
-The project convention in `CLAUDE.md` is "Atomic file writes (write-then-rename) for config and state". The backup write does not follow it.
+This is far better than the unbounded behaviour before the phase. Still, the "at most 3" promise only holds when the disk has room for a fourth copy. The case it fails in is a disk that fills up during a crash loop, which is exactly the case the bound is for.
 
-**Fix:** Write the copy to a temporary name that the stamp regex cannot match, then rename it into place. A failed copy then never produces a candidate name:
+The fix report records this as "Not done (optional in the review)". It is carried forward here as a Warning because the user-facing effect is a startup that fails until files are deleted manually.
+**Fix:** Prune to `N - 1` before the copy, then copy. If the copy fails, the user still has the canonical backup plus `N - 1` intact retry copies, and the peak is never more than canonical plus N:
 ```python
-stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-timestamped_path = db_path.with_suffix(f".v{current}-backup-{stamp}")
-tmp_path = timestamped_path.with_name(timestamped_path.name + ".partial")
-try:
-    shutil.copy2(db_path, tmp_path)
-    tmp_path.replace(timestamped_path)
-finally:
-    tmp_path.unlink(missing_ok=True)
+if backup_path.exists():
+    # Make room first so the peak never exceeds canonical + N (BKUP-01).
+    _prune_timestamped_backups(db_path, current, just_written=None, keep=_MAX_RETAINED_TIMESTAMPED_BACKUPS - 1)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    ...  # .partial copy + replace, unchanged
 ```
-Optionally, prune down to `_MAX_RETAINED_TIMESTAMPED_BACKUPS - 1` before the copy, so the peak is canonical plus 3. Add a test: patch `shutil.copy2` to write a few bytes and then raise `OSError(28, ...)`, then check that no `*-backup-<stamp>` file is left behind.
-
-### WR-02: The telemetry regression test cannot tell whether the auto-configure path was exercised
-
-**File:** `tests/test_telemetry.py:23-37`
-**Issue:** The test sets `FASTAPI_OTEL_AUTO_CONFIGURE=true` and an OTLP endpoint, starts the app, and checks only that `/health` returns 200.
-
-In FastAPI 0.162.4, the auto-configure failure (missing `opentelemetry-sdk` / exporter) is caught inside FastAPI's own `telemetry/_runtime.lifespan` and only logged as a warning. The test would pass the same way if any of these happened:
-- FastAPI renamed or dropped `FASTAPI_OTEL_AUTO_CONFIGURE`,
-- a FastAPI downgrade removed the telemetry module,
-- the variable were read at a different time.
-
-In each case the "pinned" behaviour is never reached. The test claims to pin TELEM-01 but would stay green when nothing is being pinned.
-
-The test also builds its own `FastAPI(lifespan=...)` instead of the production construction in `triggarr/__main__.py:68-73` (middleware and static mount). A future production-only change, such as passing `telemetry=` there, would not be covered.
-
-**Fix:** Assert that the precondition took effect, and that the failure was absorbed rather than skipped:
-```python
-app = FastAPI(lifespan=lifespan_fn)
-assert app._telemetry["auto_configure"] is True  # env var was honoured at construction
-...
-with caplog.at_level(logging.WARNING, logger="fastapi"), TestClient(app) as client:
-    response = client.get("/health")
-assert "automatic telemetry configuration failed" in caplog.text
-```
-If relying on the private `_telemetry` attribute is unacceptable, the caplog assertion alone still proves the path ran.
+To do this, `_prune_timestamped_backups` takes `keep` and an optional `just_written`. Add a test: plant 3 good copies, make `copy2` raise ENOSPC, and assert that exactly 2 good copies and the canonical backup remain. Alternatively, if the owner prefers to keep 3 copies even when the copy fails, catch ENOSPC on the copy, prune, and retry once.
 
 ## Info
 
-### IN-01: The stamp regex accepts non-ASCII digits
-
-**File:** `triggarr/db.py:117`
-**Issue:** `re.compile(r"\d{8}T\d{12}Z")` on a `str` matches any Unicode decimal digit. I verified that `"٢٠٢٦0101T000000000000Z"` fully matches. That conflicts with the D-07 rule that only names exactly in the `strftime` format are ever deletion candidates, and non-ASCII digits would also break the "fixed-width string order = time order" assumption. It needs a deliberately odd filename to trigger.
-**Fix:** `re.compile(r"[0-9]{8}T[0-9]{12}Z")` or add `flags=re.ASCII`.
-
-### IN-02: The end-to-end pruning-failure test accepts any WARNING, not specifically the pruning one
-
-**File:** `tests/test_db.py:2903-2906`
-**Issue:** `test_run_migrations_proceeds_when_pruning_fails` checks only that some line starts with `WARNING`. The v10 migration emits no warnings today, so the test passes for the right reason. But any future WARNING from `run_migrations` or `_migrate_v10` would satisfy it even if pruning stopped logging.
-**Fix:** Assert on the message: `assert "Could not remove old retry backup" in log_text`.
-
-### IN-03: The README does not mention the warning operators will see
+### IN-01: The README overstates when the FastAPI warning appears and what it says
 
 **File:** `README.md:215`
-**Issue:** The new sentence says the variables "do not stop Triggarr from starting, but nothing is exported". With them set, FastAPI logs `FastAPI automatic telemetry configuration failed: Automatic OpenTelemetry export requires fastapi[opentelemetry] ...` through stdlib logging at startup. That message tells the operator to install an extra, which is not possible in the shipped image and is not supported. An operator could read it as a misconfiguration to fix.
-**Fix:** Add: "FastAPI logs a one-time warning about the missing OpenTelemetry extra; it is harmless and can be silenced by unsetting the variables."
+**Issue:** The README says: "With `FASTAPI_OTEL_AUTO_CONFIGURE=true`, FastAPI logs a one-time startup warning that automatic telemetry configuration failed and suggests installing an OpenTelemetry extra." In FastAPI 0.162.4 (`fastapi/telemetry/_runtime.py:105-131`), that is only partly true:
+- With `FASTAPI_OTEL_AUTO_CONFIGURE=true` and no OTLP endpoint (`OTEL_EXPORTER_OTLP_ENDPOINT` or a per-signal variant), nothing is requested and no warning is logged.
+- With an endpoint but `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`, a non-`otlp` `OTEL_*_EXPORTER`, or an endpoint that is not an HTTP(S) URL, the warning says something different (protocol, exporter or endpoint error), not "install an extra".
 
-### IN-04: Retry backups for already-completed upgrades are never cleaned up
+An operator who sees a different message may not connect it to this README note.
+**Fix:** Reword it, for example: "If `FASTAPI_OTEL_AUTO_CONFIGURE=true` is set together with an OTLP endpoint, FastAPI logs a one-time startup warning beginning 'FastAPI automatic telemetry configuration failed'. The warning is harmless, the OpenTelemetry extra it may suggest is not supported, and unsetting `FASTAPI_OTEL_AUTO_CONFIGURE` silences it."
 
-**File:** `triggarr/db.py:285` (design, D-06/D-07)
-**Issue:** Pruning runs only for the `current` version, and only on the retry path. After a crash loop that ends in success, the 3 retry copies for that version stay forever. Only a new crash loop from the same version would prune them, and that can no longer happen. The size is bounded at 3, so this is informational and matches D-06 as decided.
-**Fix:** None required. See SA-01.
+### IN-02: The telemetry regression test depends on the runner's OTEL environment
+
+**File:** `tests/test_telemetry.py:27-28`
+**Issue:** The test sets two variables but does not clear the others FastAPI reads. If the CI runner or a developer shell has any of these set, no warning is logged and the test fails even though Triggarr behaves correctly:
+- `OTEL_SDK_DISABLED=true` (`_runtime.py:96` returns early),
+- `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER` and `OTEL_LOGS_EXPORTER` all set to `none`,
+- per-signal `OTEL_EXPORTER_OTLP_*_ENDPOINT` values that override the generic one.
+
+This is a test-reliability issue, not a product defect.
+**Fix:** Clear the other OTEL variables at the top of the test:
+```python
+for name in ("OTEL_SDK_DISABLED", "OTEL_TRACES_EXPORTER", "OTEL_METRICS_EXPORTER", "OTEL_LOGS_EXPORTER",
+             "OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"):
+    monkeypatch.delenv(name, raising=False)
+```
+
+### IN-03: The new cleanup-failure branch has no test, and the stale-`.partial` half of the WR-01 test does not guard the fix
+
+**File:** `triggarr/db.py:289-298`, `tests/test_db.py:2654-2707`
+**Issue:**
+- No test covers the branch where removing the `.partial` itself fails. That branch should log `"Could not remove incomplete retry backup"` at WARNING and still raise the original copy error (ENOSPC), not the cleanup `OSError`. The behaviour is correct today, but a later refactor that replaces the bare `raise` with `raise cleanup_exc`, or drops the inner `try`, would not be caught.
+- In `test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_backups`, the second half plants `...-backup-20990101T000000000000Z.partial` and checks that it is not counted. The pre-fix code would also pass that check, because `fullmatch` already rejects the `.partial` suffix. Only the first half guards the fix. The test name and comment suggest the second half does too.
+**Fix:** Add a test that patches `shutil.copy2` to write bytes and raise `OSError(28, ...)` and patches `Path.unlink` to raise `PermissionError` for `.partial` names. Assert that `pytest.raises(OSError)` sees `errno == 28` and that exactly one WARNING names the `.partial` file. Optionally, change the second-half comment to say it pins the regex boundary, not the write-then-rename fix.
 
 ## Conventions
 
-### CV-01: README file-name casing (tool output, false positive)
+### CV-01: README file-name casing (tool output, false positive; not counted)
 
 **File:** `README.md:1`
-**Deviation:** The convention checker reports "file name casing is CONSTANT (README)" against a derived "camel" file-name convention.
-**Convention:** file-name-casing should be camel (derived by `verify conventions --check`).
-**Fix:** None recommended. `README.md` is a universal fixed name, so this is a false positive in the rule pack, not a defect. It is listed only because the tool emitted it. It does not count toward the totals.
+**Deviation:** At this head, `verify conventions --check` again reports "file name casing is CONSTANT (README)".
+**Convention:** file-name-casing should be camel (derived).
+**Fix:** None. `README.md` is a fixed, universal name, so the rule pack is wrong here. This is advisory only and does not count toward the totals.
 
 ## Set aside (needs ruling)
 
-### SA-01: No cleanup of retry backups after a successful upgrade
+None. This review raises no new set-aside items.
 
-**Where:** `triggarr/db.py:275-291`
-**Why excluded:** D-06 locks "nothing extra is deleted on the success path". Removing leftover retry backups after success would be a product decision, not a defect.
-**Effect if left as is:** After a crash loop that ends in success, users keep the canonical backup plus up to 3 full-size database copies for that version indefinitely. Disk use stays bounded but is never reclaimed automatically.
-**Needs:** Owner ruling: accept (current D-06), or defer a "remove retry backups once the upgrade succeeds" item to the backlog.
+The prior SA-01 has an owner ruling: keep D-06, and backlog "remove retry backups once an upgrade succeeds", including stale `.partial` files left by a process killed mid-copy. Because of that ruling, this review does not raise that behaviour again. The `.partial` leftovers fall under the same backlog item.
 
 ---
 
-_Reviewed: 2026-11-16T00:00:00Z_
+_Reviewed: 2026-11-17T03:21:10Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
+_Head: fbc812eba07f674069e04486f369524e58927298_
