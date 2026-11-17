@@ -12,6 +12,8 @@ environment before the app object is built.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -20,7 +22,7 @@ from triggarr.search.scheduler import create_lifespan
 from triggarr.web.routes import router
 
 
-def test_telemetry_env_vars_do_not_crash_startup(tmp_path, monkeypatch):
+def test_telemetry_env_vars_do_not_crash_startup(tmp_path, monkeypatch, caplog):
     """TELEM-01: FASTAPI_OTEL_AUTO_CONFIGURE + an OTLP endpoint must not crash startup."""
     monkeypatch.setenv("FASTAPI_OTEL_AUTO_CONFIGURE", "true")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
@@ -30,8 +32,11 @@ def test_telemetry_env_vars_do_not_crash_startup(tmp_path, monkeypatch):
     app = FastAPI(lifespan=lifespan_fn)
     app.include_router(router)
 
-    with TestClient(app) as client:
+    with caplog.at_level(logging.WARNING, logger="fastapi"), TestClient(app) as client:
         response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+    # Prove the auto-configure path actually ran and its failure was absorbed,
+    # so this test cannot stay green if FastAPI renames or drops the variable.
+    assert "automatic telemetry configuration failed" in caplog.text
