@@ -1,0 +1,99 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "39ccfabb3c0d9a26a14c5be74dbeceb4d1f12ca5",
+  "inspected_base_sha": "d7704342b5978adc6ce883b20b6648dff3e1753a",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/63",
+  "scope": "Full specified diff, including both changed Phase 88 plan files, tests, and relevant surrounding code.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects identified. Backup retention, partial-copy cleanup, failure handling, and telemetry startup coverage are consistent with the intended behavior. Harness evidence at the requested head reports 3351 passed and 1 skipped.",
+  "coverage": [
+    "All five files in the non-planning-markdown diff: .planning/config.json, README.md, tests/test_db.py, tests/test_telemetry.py, and triggarr/db.py.",
+    "Both changed phase plans: 88-01-PLAN.md and 88-02-PLAN.md, including execution instructions, acceptance checks, and threat models.",
+    "Crash-loop retention, eventual successful migration, filename ordering, clock rollback, canonical preservation, and exclusion of unrelated files.",
+    "Disk-full copy failures, abandoned staging files, cleanup failures, directory-listing failures, and continued pruning after deletion errors.",
+    "Migration callers, transaction rollback, database initialization, production lifespan, and single-process startup assumptions.",
+    "Telemetry environment normalization, real ASGI lifespan dispatch, health response assertions, and installed FastAPI auto-configuration error handling.",
+    "Configuration changes and potential weakening of review, acceptance, or publication safeguards."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than the explicitly included changed *-PLAN.md files.",
+    "Pre-existing defects outside the change."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e d7704342b5978adc6ce883b20b6648dff3e1753a",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..39ccfabb3c0d9a26a14c5be74dbeceb4d1f12ca5 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect scoped implementation and test diff."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..39ccfabb3c0d9a26a14c5be74dbeceb4d1f12ca5 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed executor plans."
+    },
+    {
+      "command": "git diff --stat d7704342b5978adc6ce883b20b6648dff3e1753a..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Confirm scoped file inventory."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..HEAD -- triggarr/db.py tests/test_telemetry.py",
+      "exit_code": 0,
+      "purpose": "Read implementation and telemetry changes without earlier output truncation."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence and verify its commit."
+    },
+    {
+      "command": "sed -n '2870,3150p' tests/test_db.py",
+      "exit_code": 0,
+      "purpose": "Complete inspection of added backup tests."
+    },
+    {
+      "command": "cat .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect backup plan instructions and acceptance criteria."
+    },
+    {
+      "command": "sed -n '90,130p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md\nsed -n '1,178p' triggarr/db.py\nsed -n '291,420p' triggarr/db.py\nrg -n 'init_db|run_migrations|aiosqlite.connect|journal_mode|uvicorn|workers' triggarr/search/scheduler.py triggarr/main.py Dockerfile docker-compose.yml tests/migration_faults.py pyproject.toml",
+      "exit_code": 2,
+      "purpose": "Inspect migration context and locate startup callers; search reported nonexistent triggarr/main.py, subsequently corrected to __main__.py."
+    },
+    {
+      "command": "sed -n '76,94p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md\nsed -n '450,575p' triggarr/search/scheduler.py\nsed -n '1,85p' tests/migration_faults.py\nrg -n 'async def init_db|run_migrations\\(' triggarr/db.py\nrg -n 'health|FastAPI\\(|uvicorn.Config' triggarr/__main__.py triggarr/web/routes.py\ncat pyproject.toml\ncat .planning/config.json",
+      "exit_code": 0,
+      "purpose": "Complete plan inspection and trace production initialization, fixtures, dependencies, and workflow configuration."
+    },
+    {
+      "command": "git diff --name-only d7704342b5978adc6ce883b20b6648dff3e1753a..HEAD -- ':(glob).planning/**/*-PLAN.md'\ngit status --short\nls -ld .venv .venv/bin/python",
+      "exit_code": 0,
+      "purpose": "Confirm plan inventory, working-tree status, and local interpreter availability."
+    },
+    {
+      "command": "sed -n '772,812p' triggarr/db.py\nsed -n '55,90p' triggarr/__main__.py\nsed -n '250,265p' triggarr/web/routes.py\nrg -n 'auto_configure|automatic telemetry configuration failed|OTEL_SDK_DISABLED' .venv/lib/python3.13/site-packages/fastapi/telemetry/_runtime.py .venv/lib/python3.13/site-packages/fastapi/applications.py\nsed -n '1,220p' .venv/lib/python3.13/site-packages/fastapi/telemetry/_runtime.py",
+      "exit_code": 0,
+      "purpose": "Verify migration entry point, server construction, health route, and installed telemetry behavior."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently execute pytest: the sandbox is read-only, and the local virtual-environment interpreter points outside the permitted working-copy boundary. Test results are attributed solely to the harness.",
+    "Disk exhaustion, hard process termination, and concurrent process startup were assessed through source and regression tests rather than newly executed fault injection.",
+    "Initial combined output was truncated; subsequent targeted reads covered the omitted sections."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
