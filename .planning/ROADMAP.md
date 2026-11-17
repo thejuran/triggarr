@@ -274,7 +274,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 **Plans**: 2 plans in 2 waves
 
 **Wave 1**
-- [ ] 88-01-PLAN.md â€” repeated failed upgrades keep the original backup plus the 3 most recent retry copies, chosen by the timestamp in the name; a pruning failure is logged as a warning and never blocks startup (BKUP-01, BKUP-02)
+- [x] 88-01-PLAN.md â€” repeated failed upgrades keep the original backup plus the 3 most recent retry copies, chosen by the timestamp in the name; a pruning failure is logged as a warning and never blocks startup (BKUP-01, BKUP-02)
 
 **Wave 2** *(blocked on Wave 1: 88-01)*
 - [ ] 88-02-PLAN.md â€” a permanent test pins that startup and /health survive the telemetry variables, and the README states telemetry export is unsupported (TELEM-01, TELEM-02)
@@ -343,7 +343,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 | 87. Settings & State-File Safety | TBD | Not started | - |
-| 88. Bounded Upgrade Backups & Telemetry Regression | TBD | Not started | - |
+| 88. Bounded Upgrade Backups & Telemetry Regression | 1/2 | In Progress | - |
 | 89. Startup & Shutdown Resource Cleanup | TBD | Not started | - |
 | 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |

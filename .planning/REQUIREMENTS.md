@@ -40,8 +40,8 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Upgrade Backups
 
-- [ ] **BKUP-01**: Pre-upgrade database backups are bounded: the original backup taken before the first upgrade attempt is always kept, plus at most the 3 most recent later ones.
-- [ ] **BKUP-02**: Pruning never removes the original backup or the one just written, orders backups by the timestamp in their names, and a pruning failure is logged without blocking startup.
+- [x] **BKUP-01**: Pre-upgrade database backups are bounded: the original backup taken before the first upgrade attempt is always kept, plus at most the 3 most recent later ones.
+- [x] **BKUP-02**: Pruning never removes the original backup or the one just written, orders backups by the timestamp in their names, and a pruning failure is logged without blocking startup.
 
 ### Removed-Instance Searches
 
@@ -95,8 +95,8 @@ Which phases cover which requirements.
 | CONSIST-01 | Phase 87 | Pending |
 | CONSIST-02 | Phase 87 | Pending |
 | CONSIST-03 | Phase 87 | Pending |
-| BKUP-01 | Phase 88 | Pending |
-| BKUP-02 | Phase 88 | Pending |
+| BKUP-01 | Phase 88 | Complete |
+| BKUP-02 | Phase 88 | Complete |
 | TELEM-01 | Phase 88 | Pending |
 | TELEM-02 | Phase 88 | Pending |
 | LIFE-01 | Phase 89 | Pending |

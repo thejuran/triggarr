@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: planning
-stopped_at: "Phase 88 planned (2 plans, 2 waves); execution not started"
-last_updated: "2026-11-16T05:30:08.000Z"
-last_activity: "2026-11-16 — Phase 88 planned: 2 plans in 2 waves (88-01 bounded backups, BKUP-01/02; 88-02 telemetry regression test + README note, TELEM-01/02); plan checker passed on revision 2"
+status: executing
+stopped_at: Phase 88 plan 01 (bounded upgrade backups) executed, BKUP-01/02 complete; plan 02 (telemetry regression) next
+last_updated: "2026-11-17T02:52:15.912Z"
+last_activity: 2026-11-17 -- Phase 88 plan 01 executed (bounded upgrade backups, BKUP-01/02 complete)
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 14
 ---
 
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.14 Reliability, Phase 88 next (Phase 87 landed on main via PR #62). v2.12.1 is published and running in production.
+**Current focus:** Phase 88: bounded-upgrade-backups-telemetry-regression
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 88 (Bounded Upgrade Backups & Telemetry Regression) — planned, execution not started
-Plan: 0 of 2 executed (88-01 Wave 1; 88-02 Wave 2, after 88-01)
-Status: ready for /bm:execute-phase 88 (plans: `.planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-0{1,2}-PLAN.md`). Phase 87 landed on main 2026-11-16 as PR #62 (merge `d7704342`; acceptance passed at head `8c683587`)
-Last activity: 2026-11-16 — Phase 88 planned: 2 plans in 2 waves (88-01 bounded backups, BKUP-01/02; 88-02 telemetry regression test + README note, TELEM-01/02); plan checker passed on revision 2
+Phase: 88 (bounded-upgrade-backups-telemetry-regression) — EXECUTING
+Plan: 1 of 2 executed (88-01 bounded backups, BKUP-01/02 complete; 88-02 telemetry regression, Wave 2, next)
+Status: Executing Phase 88
+Last activity: 2026-11-17 -- Phase 88 plan 01 executed (bounded upgrade backups, BKUP-01/02 complete)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -102,9 +102,11 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 
 Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
 
+- [Phase 88-01]: Followed CONTEXT.md D-01..D-09 exactly: no new dependency; canonical and just-written backups are structurally excluded from the prune candidate set, not merely filtered by a rule that could be bypassed.
+
 ### Pending Todos
 
-- Bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). In v2.14 Reliability scope since 2026-11-15; now Phase 88 (BKUP-01/02).
+None currently pending. (Bound/prune timestamped pre-migration DB backups, previously tracked here, closed 2026-11-17 by Phase 88 plan 01 -- BKUP-01/02.)
 
 ### Roadmap Evolution
 
@@ -169,9 +171,9 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-15T21:35:16.692Z
-Stopped at: Phase 87 merged (PR #62, 2026-11-16); Phase 88 not started
-Resume file: .planning/ROADMAP.md (Phase 88 section)
+Last session: 2026-11-17T02:52:15.908Z
+Stopped at: Phase 88 plan 01 (bounded upgrade backups) executed, BKUP-01/02 complete; plan 02 (telemetry regression) next
+Resume file: .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-02-PLAN.md
 
 ## Operator Next Steps
 
