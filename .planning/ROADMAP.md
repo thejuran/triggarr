@@ -342,7 +342,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 85. Follow-on CI Improvements & Acceptance Usability | 19/19 | Complete (merged PR #36; Codex incomplete for size, owner-approved vibe-check fallback; UAT P5 at next release) | 2026-10-28 |
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
-| 87. Settings & State-File Safety | TBD | Not started | - |
+| 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
 | 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Plans executed, review/verification pending | - |
 | 89. Startup & Shutdown Resource Cleanup | TBD | Not started | - |
 | 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
