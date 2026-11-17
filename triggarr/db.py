@@ -277,7 +277,23 @@ async def run_migrations(
         if backup_path.exists():
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
             timestamped_path = db_path.with_suffix(f".v{current}-backup-{stamp}")
-            shutil.copy2(db_path, timestamped_path)
+            # Write-then-rename: the ".partial" name never matches the stamp
+            # pattern, so a copy that fails partway (e.g. disk full) can never
+            # be counted as one of the retained retry backups by the pruning.
+            partial_path = timestamped_path.with_name(timestamped_path.name + ".partial")
+            try:
+                shutil.copy2(db_path, partial_path)
+                partial_path.replace(timestamped_path)
+            except BaseException:
+                try:
+                    partial_path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    logger.warning(
+                        "Could not remove incomplete retry backup {path}: {exc}",
+                        path=partial_path,
+                        exc=f"{type(cleanup_exc).__name__}: {cleanup_exc}",
+                    )
+                raise
             logger.info(
                 "Database backed up to {path} (earlier backup preserved at {earlier})",
                 path=timestamped_path,

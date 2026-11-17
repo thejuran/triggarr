@@ -2651,6 +2651,62 @@ async def test_backup_crash_loop_then_success_keeps_four_files(tmp_path, monkeyp
         await db.close()
 
 
+async def test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_backups(tmp_path, monkeypatch):
+    """WR-01: a retry-backup copy that fails partway (disk full) leaves no file with a
+    timestamped-backup name, and the next attempt still keeps the 3 good backups."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    good_paths = [db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z") for i in range(1, 4)]
+    for p in good_paths:
+        shutil.copy2(db_path, p)
+
+    original_copy2 = shutil.copy2
+
+    def _copy_then_disk_full(src, dst, *args, **kwargs):
+        Path(dst).write_bytes(b"partial")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(shutil, "copy2", _copy_then_disk_full)
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        with pytest.raises(OSError):
+            await run_migrations(db, db_path)
+
+        leftovers = [p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")]
+        assert sorted(leftovers) == sorted(p.name for p in good_paths), (
+            f"A failed copy must leave no new backup-named file; got {leftovers}"
+        )
+
+        # A leftover temporary file (e.g. a hard kill mid-copy) must never count
+        # toward the 3 retained backups on the next attempt.
+        stale_partial = db_path.with_suffix(".v9-backup-20990101T000000000000Z.partial")
+        stale_partial.write_bytes(b"partial")
+
+        monkeypatch.setattr(shutil, "copy2", original_copy2)
+
+        async def _always_fails(db, **kwargs):
+            raise RuntimeError("simulated migration failure")
+
+        monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+        with pytest.raises(RuntimeError):
+            await run_migrations(db, db_path)
+
+        retained = sorted(
+            p.name
+            for p in db_path.parent.iterdir()
+            if p.name.startswith("test.v9-backup-") and not p.name.endswith(".partial")
+        )
+        assert len(retained) == 3, f"Expected 3 retained timestamped backups, got {retained}"
+        assert good_paths[0].name not in retained, "Oldest good backup is pruned to make room for the new one"
+        assert good_paths[1].name in retained
+        assert good_paths[2].name in retained
+        assert canonical.exists()
+    finally:
+        await db.close()
+
+
 def test_prune_orders_by_filename_stamp_not_mtime(tmp_path):
     """BKUP-02/D-03: retention order is decided by the filename stamp, never mtime."""
     from triggarr.db import _prune_timestamped_backups
