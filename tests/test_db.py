@@ -2681,8 +2681,9 @@ async def test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_back
         )
         assert canonical.exists()
 
-        # A leftover temporary file (e.g. a hard kill mid-copy) must never count
-        # toward the 3 retained backups on the next attempt.
+        # A leftover staging file from a hard kill mid-copy (which skips the in-process
+        # cleanup) must be reclaimed on the next attempt and never count toward the 3
+        # retained backups, even though its stamp sorts newest.
         stale_partial = db_path.with_suffix(".v9-backup-20990101T000000000000Z.partial")
         stale_partial.write_bytes(b"partial")
 
@@ -2704,9 +2705,53 @@ async def test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_back
         assert good_paths[0].name not in retained, "Oldest good backup is pruned to make room for the new one"
         assert good_paths[1].name in retained
         assert good_paths[2].name in retained
+        assert not stale_partial.exists(), "The abandoned staging file must be reclaimed"
         assert canonical.exists()
     finally:
         await db.close()
+
+
+async def test_failed_partial_cleanup_logs_warning_and_reraises_copy_error(tmp_path, monkeypatch):
+    """WR-01/D-09: if removing the current attempt's ``.partial`` after a failed copy
+    also fails, one WARNING names it and the ORIGINAL copy error (ENOSPC) is raised,
+    not the cleanup error."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+
+    def _copy_then_disk_full(src, dst, *args, **kwargs):
+        Path(dst).write_bytes(b"partial")
+        raise OSError(28, "No space left on device")
+
+    original_unlink = Path.unlink
+
+    def _failing_partial_unlink(self, *args, **kwargs):
+        if self.name.endswith(".partial"):
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", _copy_then_disk_full)
+    monkeypatch.setattr(Path, "unlink", _failing_partial_unlink)
+
+    db = await aiosqlite.connect(db_path)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="WARNING")
+    try:
+        with pytest.raises(OSError) as excinfo:
+            await run_migrations(db, db_path)
+    finally:
+        logger.remove(handler_id)
+        await db.close()
+
+    assert not isinstance(excinfo.value, PermissionError), "The cleanup error must not replace the copy error"
+    assert excinfo.value.errno == 28
+    leftover = [n for n in _v9_backup_names(db_path) if n.endswith(".partial")]
+    assert len(leftover) == 1, f"The undeletable staging file should still be on disk, got {leftover}"
+    warning_lines = [line for line in sink.getvalue().splitlines() if line.startswith("WARNING")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {sink.getvalue()!r}"
+    assert "Could not remove incomplete retry backup" in warning_lines[0]
+    assert leftover[0] in warning_lines[0]
+    assert "PermissionError" in warning_lines[0]
 
 
 def _v9_backup_names(db_path: Path) -> list[str]:
