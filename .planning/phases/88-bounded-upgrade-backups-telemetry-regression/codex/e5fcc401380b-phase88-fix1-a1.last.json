@@ -1,0 +1,112 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "e5fcc401380b515e8994029407b49272ff8bd5a2",
+  "inspected_base_sha": "d7704342b5978adc6ce883b20b6648dff3e1753a",
+  "pr_url": "none",
+  "scope": "Phase 88: bounded upgrade backups and telemetry regression, after fix round 1; full requested diff plus both changed phase plans.",
+  "verdict": "findings",
+  "summary": "One medium-severity gap: interrupted backup copies can accumulate indefinitely outside the retention bound. Harness evidence reports 3347 passed and 1 skipped at the inspected head.",
+  "coverage": [
+    "Inspected all five scoped changed files and both changed phase plans.",
+    "Traced startup through create_lifespan, init_db, run_migrations, backup creation, pruning, and migration execution.",
+    "Reviewed retention ordering, canonical preservation, clock rollback, filename filtering, copy failures, listing failures, and deletion failures.",
+    "Reviewed regression assertions, fixtures, telemetry environment timing, TestClient lifespan dispatch, dependency declarations, and README claims.",
+    "Reviewed planning configuration and plan acceptance/security requirements; no CI or publication-policy changes were present."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Raw review transcripts, .planning/**/*.jsonl, and generated .planning/**/codex/** artifacts."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e d7704342b5978adc6ce883b20b6648dff3e1753a",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..e5fcc401380b515e8994029407b49272ff8bd5a2 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect scoped implementation and tests."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..e5fcc401380b515e8994029407b49272ff8bd5a2 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed phase plans."
+    },
+    {
+      "command": "git diff --stat d7704342b5978adc6ce883b20b6648dff3e1753a..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Confirm scoped file inventory."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..HEAD -- triggarr/db.py tests/test_telemetry.py",
+      "exit_code": 0,
+      "purpose": "Read implementation and telemetry diff without earlier output truncation."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; sed -n '2920,2990p' tests/test_db.py",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and remaining regression tests."
+    },
+    {
+      "command": "cat .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review backup plan."
+    },
+    {
+      "command": "sed -n '35,105p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md; sed -n '1,110p' triggarr/db.py; sed -n '240,380p' triggarr/db.py",
+      "exit_code": 0,
+      "purpose": "Recover truncated plan context and inspect migration surroundings."
+    },
+    {
+      "command": "rg -n 'init_db|run_migrations|journal_mode|create_lifespan|check_for_update' triggarr/db.py triggarr/search/scheduler.py triggarr/__main__.py tests/migration_faults.py; cat pyproject.toml; sed -n '1,125p' tests/migration_faults.py; sed -n '1,140p' tests/conftest.py",
+      "exit_code": 0,
+      "purpose": "Trace callers and examine dependencies and fixtures."
+    },
+    {
+      "command": "sed -n '460,525p' triggarr/search/scheduler.py; sed -n '640,705p' triggarr/search/scheduler.py; sed -n '710,750p' triggarr/db.py; sed -n '1,115p' triggarr/__main__.py; rg -n 'health|fastapi|otel' triggarr/web/routes.py uv.lock Dockerfile; git status --short; git diff --name-only d7704342b5978adc6ce883b20b6648dff3e1753a..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect startup integration, locked dependency, working tree, and plan inventory."
+    },
+    {
+      "command": "sed -n '1,100p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review telemetry plan setup and requirements."
+    },
+    {
+      "command": "nl -ba triggarr/db.py | sed -n '200,218p;280,311p'; sed -n '100,186p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-02-PLAN.md; sed -n '2840,2925p' tests/test_db.py",
+      "exit_code": 0,
+      "purpose": "Confirm finding location and finish plan/test inspection."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Reclaim abandoned partial backups to preserve the disk bound",
+      "file": "triggarr/db.py",
+      "line_start": 285,
+      "line_end": 291,
+      "trigger": "The process is killed during a retry backup copy, or after copying but before renaming, and subsequently restarts. Repeated interruptions leave distinct timestamped .partial files.",
+      "execution_path": "create_lifespan → init_db → run_migrations writes a timestamp-specific .partial file. SIGKILL bypasses the exception cleanup. The next startup chooses a new timestamp, while _prune_timestamped_backups rejects every old .partial suffix.",
+      "consequence": "Abandoned copies accumulate without limit and can fill the data volume, preventing startup despite the advertised bounded upgrade backups.",
+      "evidence": "Cleanup only targets the current attempt's partial_path inside the exception handler. Lines 208–210 exclude abandoned partials from retention. test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_backups explicitly seeds a hard-kill leftover but only checks the count of completed backups; it does not assert reclamation or bound total backup storage.",
+      "suggested_fix": "Add safe reclamation or bounded reuse of abandoned staging files, with ownership/locking sufficient to avoid deleting an active concurrent copy. Keep incomplete files excluded from the three valid recovery backups. Add a restart regression that seeds multiple abandoned partials and checks their reclamation alongside preservation of valid backups.",
+      "reproduced": false,
+      "reproduction_command": null,
+      "hypothesis": "Repeated hard termination during the copy/rename window leaves one additional unprunable partial per attempt. This follows from the inspected control flow; an actual process-kill reproduction was not run."
+    }
+  ],
+  "limitations": [
+    "Did not run pytest independently because this session permits only read-only filesystem access; used the harness evidence for the exact inspected head.",
+    "No process-kill or concurrent-process reproduction was performed.",
+    "Initial combined output was truncated; affected implementation, plan, and test sections were subsequently read separately."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

@@ -212,6 +212,8 @@ search_cutoff_count = 5             # cutoff/upgrade albums to search per cycle
 
 Startup-level environment variables such as `TRIGGARR_CONFIG_DIR`, `TRUSTED_PROXY_IPS`, and `ROOT_PATH` are read by the process before the TOML settings are loaded; they are not stored in `triggarr.toml`.
 
+Triggarr does not support OpenTelemetry export. Setting `FASTAPI_OTEL_AUTO_CONFIGURE` or an OTLP endpoint such as `OTEL_EXPORTER_OTLP_ENDPOINT` does not stop Triggarr from starting, but nothing is exported. If `FASTAPI_OTEL_AUTO_CONFIGURE=true` is set together with an OTLP endpoint, FastAPI logs a one-time startup warning that automatic telemetry configuration failed; the rest of its text depends on the exporter and protocol settings. The warning is harmless, any OpenTelemetry extra it suggests is not supported, and unsetting `FASTAPI_OTEL_AUTO_CONFIGURE` silences it.
+
 ## Screenshots
 
 ![Triggarr dashboard showing app cards, grab rate stats, and live recent activity](docs/screenshots/dashboard.png)

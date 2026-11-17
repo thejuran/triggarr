@@ -8,6 +8,8 @@ signatures, and multi-instance scoping.
 from __future__ import annotations
 
 import io
+import os
+import shutil
 from pathlib import Path
 
 import aiosqlite
@@ -16,6 +18,7 @@ from loguru import logger
 
 from tests.migration_faults import STANDARD_MAPPING, original_projection, seed_v9_db, snapshot
 from triggarr.db import (
+    MIGRATIONS,
     OwnedGrab,
     OwnedGrabRecord,
     PendingCapExceeded,
@@ -31,6 +34,7 @@ from triggarr.db import (
     init_db,
     insert_search_entry,
     migrate_from_state,
+    run_migrations,
     update_outcome_and_stats,
 )
 
@@ -2568,3 +2572,576 @@ async def test_pending_cap_counts_active_partial_rows(tmp_path):
         )
     assert await _ids(db) == before  # rejected with no write
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Bounded pre-upgrade backups through a crash loop (BKUP-01/BKUP-02, Phase 88)
+# ---------------------------------------------------------------------------
+
+
+async def test_backup_bound_holds_through_repeated_failed_attempts(tmp_path, monkeypatch):
+    """BKUP-01/D-05: 5 consecutive failed upgrade attempts from v9 never leave more
+    than 3 timestamped retry backups, and the canonical backup is untouched."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    original_bytes = db_path.read_bytes()
+
+    async def _always_fails(db, **kwargs):
+        raise RuntimeError("simulated migration failure")
+
+    monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        canonical = db_path.with_suffix(".v9-backup")
+        prev_timestamped: set[str] = set()
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                await run_migrations(db, db_path)
+            current_timestamped = {
+                p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")
+            }
+            assert len(current_timestamped) <= 3, (
+                f"Never more than 3 timestamped v9 backups after one attempt; got {current_timestamped}"
+            )
+            new_names = current_timestamped - prev_timestamped
+            for name in new_names:
+                assert (db_path.parent / name).exists(), f"{name} appeared this attempt but is already gone"
+            prev_timestamped = current_timestamped
+
+        assert canonical.exists(), "Canonical v9 backup must survive 5 failed attempts"
+        assert canonical.read_bytes() == original_bytes, "Canonical backup must stay byte-identical"
+        final_timestamped = {
+            p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")
+        }
+        assert len(final_timestamped) == 3, f"Expected exactly 3 timestamped v9 backups, got {final_timestamped}"
+        assert db_path.with_suffix(".v0-backup").exists(), "Unrelated v0 backup must be untouched"
+        assert await get_schema_version(db) == 9
+    finally:
+        await db.close()
+
+
+async def test_backup_crash_loop_then_success_keeps_four_files(tmp_path, monkeypatch):
+    """BKUP-01/D-05/D-06: 5 failed attempts from v9 then a 6th that succeeds leaves
+    schema at v10 and exactly 4 v9 backup files (canonical + 3 timestamped)."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    original_v10_entry = MIGRATIONS[10]
+
+    async def _always_fails(db, **kwargs):
+        raise RuntimeError("simulated migration failure")
+
+    monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                await run_migrations(db, db_path)
+
+        monkeypatch.setitem(MIGRATIONS, 10, original_v10_entry)
+        await run_migrations(db, db_path)
+
+        assert await get_schema_version(db) == 10
+        v9_backup_files = [
+            p
+            for p in db_path.parent.iterdir()
+            if p.name == "test.v9-backup" or p.name.startswith("test.v9-backup-")
+        ]
+        assert len(v9_backup_files) == 4, f"Expected exactly 4 v9 backup files, got {v9_backup_files}"
+    finally:
+        await db.close()
+
+
+async def test_failed_retry_backup_copy_leaves_no_candidate_and_spares_good_backups(tmp_path, monkeypatch):
+    """WR-01: a retry-backup copy that fails partway (disk full) leaves no file with a
+    timestamped-backup name and keeps the 2 newest good backups (pruned before the
+    copy to make room); the next attempt keeps those plus its new backup."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    good_paths = [db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z") for i in range(1, 4)]
+    for p in good_paths:
+        shutil.copy2(db_path, p)
+
+    original_copy2 = shutil.copy2
+
+    def _copy_then_disk_full(src, dst, *args, **kwargs):
+        Path(dst).write_bytes(b"partial")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(shutil, "copy2", _copy_then_disk_full)
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        with pytest.raises(OSError):
+            await run_migrations(db, db_path)
+
+        leftovers = [p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")]
+        assert sorted(leftovers) == sorted(p.name for p in good_paths[1:]), (
+            f"A failed copy must leave no new backup-named file and the 2 newest good backups; got {leftovers}"
+        )
+        assert canonical.exists()
+
+        # A leftover staging file from a hard kill mid-copy (which skips the in-process
+        # cleanup) must be reclaimed on the next attempt and never count toward the 3
+        # retained backups, even though its stamp sorts newest.
+        stale_partial = db_path.with_suffix(".v9-backup-20990101T000000000000Z.partial")
+        stale_partial.write_bytes(b"partial")
+
+        monkeypatch.setattr(shutil, "copy2", original_copy2)
+
+        async def _always_fails(db, **kwargs):
+            raise RuntimeError("simulated migration failure")
+
+        monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+        with pytest.raises(RuntimeError):
+            await run_migrations(db, db_path)
+
+        retained = sorted(
+            p.name
+            for p in db_path.parent.iterdir()
+            if p.name.startswith("test.v9-backup-") and not p.name.endswith(".partial")
+        )
+        assert len(retained) == 3, f"Expected 3 retained timestamped backups, got {retained}"
+        assert good_paths[0].name not in retained, "Oldest good backup is pruned to make room for the new one"
+        assert good_paths[1].name in retained
+        assert good_paths[2].name in retained
+        assert not stale_partial.exists(), "The abandoned staging file must be reclaimed"
+        assert canonical.exists()
+    finally:
+        await db.close()
+
+
+async def test_failed_partial_cleanup_logs_warning_and_reraises_copy_error(tmp_path, monkeypatch):
+    """WR-01/D-09: if removing the current attempt's ``.partial`` after a failed copy
+    also fails, one WARNING names it and the ORIGINAL copy error (ENOSPC) is raised,
+    not the cleanup error."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+
+    def _copy_then_disk_full(src, dst, *args, **kwargs):
+        Path(dst).write_bytes(b"partial")
+        raise OSError(28, "No space left on device")
+
+    original_unlink = Path.unlink
+
+    def _failing_partial_unlink(self, *args, **kwargs):
+        if self.name.endswith(".partial"):
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", _copy_then_disk_full)
+    monkeypatch.setattr(Path, "unlink", _failing_partial_unlink)
+
+    db = await aiosqlite.connect(db_path)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="WARNING")
+    try:
+        with pytest.raises(OSError) as excinfo:
+            await run_migrations(db, db_path)
+    finally:
+        logger.remove(handler_id)
+        await db.close()
+
+    assert not isinstance(excinfo.value, PermissionError), "The cleanup error must not replace the copy error"
+    assert excinfo.value.errno == 28
+    leftover = [n for n in _v9_backup_names(db_path) if n.endswith(".partial")]
+    assert len(leftover) == 1, f"The undeletable staging file should still be on disk, got {leftover}"
+    warning_lines = [line for line in sink.getvalue().splitlines() if line.startswith("WARNING")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {sink.getvalue()!r}"
+    assert "Could not remove incomplete retry backup" in warning_lines[0]
+    assert leftover[0] in warning_lines[0]
+    assert "PermissionError" in warning_lines[0]
+
+
+def _v9_backup_names(db_path: Path) -> list[str]:
+    return sorted(p.name for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-"))
+
+
+async def test_retry_backup_fits_on_full_disk_after_pre_copy_cleanup(tmp_path, monkeypatch):
+    """WR-01/F001: on a disk with room for only 3 retry-backup files, the old copies and
+    abandoned staging files are cleared BEFORE the new copy, so startup proceeds."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    good_paths = [db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z") for i in range(1, 4)]
+    for p in good_paths:
+        shutil.copy2(db_path, p)
+    stale_partials = [db_path.with_suffix(f".v9-backup-2021010{i}T000000000000Z.partial") for i in range(1, 3)]
+    for p in stale_partials:
+        p.write_bytes(b"partial")
+
+    original_copy2 = shutil.copy2
+
+    def _copy2_on_tight_disk(src, dst, *args, **kwargs):
+        # The disk only holds the canonical backup plus 3 retry-backup files.
+        if len([n for n in _v9_backup_names(db_path) if n != Path(dst).name]) >= 3:
+            Path(dst).write_bytes(b"partial")
+            raise OSError(28, "No space left on device")
+        return original_copy2(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copy2", _copy2_on_tight_disk)
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        await run_migrations(db, db_path)  # must not raise ENOSPC
+        assert await get_schema_version(db) == 10
+    finally:
+        await db.close()
+
+    remaining = _v9_backup_names(db_path)
+    assert not any(n.endswith(".partial") for n in remaining), f"Stale staging files must be reclaimed: {remaining}"
+    assert len(remaining) == 3, f"Expected 3 retry backups after the copy, got {remaining}"
+    assert good_paths[0].name not in remaining
+    assert good_paths[1].name in remaining
+    assert good_paths[2].name in remaining
+    assert canonical.exists()
+
+
+async def test_restart_reclaims_abandoned_partials_and_keeps_newest_backups(tmp_path, monkeypatch):
+    """F001: abandoned ``.partial`` files from hard-killed copies are reclaimed on the next
+    start; the newest valid backups and the canonical backup survive, and look-alike files
+    for other versions or non-stamp names are never touched."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    canonical_bytes = canonical.read_bytes()
+    good_paths = [db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z") for i in range(1, 4)]
+    for p in good_paths:
+        shutil.copy2(db_path, p)
+    abandoned = [
+        db_path.with_suffix(".v9-backup-20190101T000000000000Z.partial"),
+        db_path.with_suffix(".v9-backup-20200102T120000000000Z.partial"),
+        db_path.with_suffix(".v9-backup-20990101T000000000000Z.partial"),
+    ]
+    for p in abandoned:
+        p.write_bytes(b"partial")
+    decoys = [
+        db_path.with_suffix(".v8-backup-20200101T000000000000Z.partial"),
+        db_path.with_suffix(".v9-backup-mycopy.partial"),
+    ]
+    for p in decoys:
+        p.write_bytes(b"decoy")
+
+    async def _always_fails(db, **kwargs):
+        raise RuntimeError("simulated migration failure")
+
+    monkeypatch.setitem(MIGRATIONS, 10, ("simulated failure", _always_fails))
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        with pytest.raises(RuntimeError):
+            await run_migrations(db, db_path)
+    finally:
+        await db.close()
+
+    for p in abandoned:
+        assert not p.exists(), f"Abandoned staging file {p.name} must be reclaimed"
+    for p in decoys:
+        assert p.exists(), f"{p.name} does not match the exact v9 staging pattern and must be untouched"
+    valid = [n for n in _v9_backup_names(db_path) if not n.endswith(".partial")]
+    assert len(valid) == 3, f"Expected 3 valid retry backups, got {valid}"
+    assert good_paths[0].name not in valid
+    assert good_paths[1].name in valid
+    assert good_paths[2].name in valid
+    assert canonical.read_bytes() == canonical_bytes, "Canonical backup must stay byte-identical"
+
+
+async def test_stale_partial_removal_failure_logs_warning_and_does_not_block(tmp_path, monkeypatch):
+    """F001/D-04/D-09: failing to delete an abandoned staging file logs one WARNING naming
+    it, and the backup and migration still go ahead."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    stale_partial = db_path.with_suffix(".v9-backup-20200101T000000000000Z.partial")
+    stale_partial.write_bytes(b"partial")
+
+    original_unlink = Path.unlink
+
+    def _failing_unlink(self, *args, **kwargs):
+        if self.name == stale_partial.name:
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _failing_unlink)
+
+    db = await aiosqlite.connect(db_path)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="WARNING")
+    try:
+        await run_migrations(db, db_path)  # must not raise
+        assert await get_schema_version(db) == 10
+    finally:
+        logger.remove(handler_id)
+        await db.close()
+
+    log_text = sink.getvalue()
+    warning_lines = [line for line in log_text.splitlines() if line.startswith("WARNING")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {log_text!r}"
+    assert stale_partial.name in warning_lines[0]
+    assert "PermissionError" in warning_lines[0]
+    assert "ERROR" not in log_text
+    valid = [n for n in _v9_backup_names(db_path) if not n.endswith(".partial")]
+    assert len(valid) == 1, f"The new retry backup must still be written, got {valid}"
+    assert canonical.exists()
+
+
+def test_prune_orders_by_filename_stamp_not_mtime(tmp_path):
+    """BKUP-02/D-03: retention order is decided by the filename stamp, never mtime."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    base_mtime = 1_700_000_000.0
+    # Oldest-named file gets the NEWEST mtime; newest-named gets the OLDEST mtime.
+    for rank, path in enumerate(paths):
+        mtime = base_mtime + (len(paths) - rank) * 100
+        os.utime(path, (mtime, mtime))
+
+    just_written = paths[-1]
+    _prune_timestamped_backups(db_path, 9, just_written)
+
+    remaining = {p.name for p in paths if p.exists()}
+    assert remaining == {paths[2].name, paths[3].name, paths[4].name}
+    assert not paths[0].exists(), "Oldest-named file must be pruned despite the newest mtime"
+    assert not paths[1].exists()
+    assert canonical.exists()
+
+
+def test_prune_never_deletes_just_written_even_if_clock_went_back(tmp_path):
+    """BKUP-02/D-03: the just-written backup is always kept, even if its stamp sorts oldest."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    future_stamps = [f"20990101T00000000000{i}Z" for i in range(1, 4)]
+    future_paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in future_stamps]
+    for p in future_paths:
+        p.write_bytes(b"backup")
+
+    just_written = db_path.with_suffix(".v9-backup-20260101T000000000000Z")
+    just_written.write_bytes(b"backup")
+
+    _prune_timestamped_backups(db_path, 9, just_written)
+
+    assert just_written.exists(), "Just-written backup must never be pruned"
+    assert not future_paths[0].exists(), "Oldest of the 2099 files must be pruned"
+    assert future_paths[1].exists()
+    assert future_paths[2].exists()
+    remaining_timestamped = [p for p in db_path.parent.iterdir() if p.name.startswith("test.v9-backup-")]
+    assert len(remaining_timestamped) == 3
+
+
+def test_prune_ignores_other_versions_and_non_matching_names(tmp_path):
+    """BKUP-02/D-07: other schema versions and non-matching names are never deleted."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    valid_stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    valid_paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in valid_stamps]
+    for p in valid_paths:
+        p.write_bytes(b"backup")
+
+    decoy_v0 = db_path.with_suffix(".v0-backup")
+    decoy_v0.write_bytes(b"decoy")
+    decoy_v8 = db_path.with_suffix(f".v8-backup-{valid_stamps[0]}")
+    decoy_v8.write_bytes(b"decoy")
+    decoy_v90 = db_path.with_suffix(f".v90-backup-{valid_stamps[0]}")
+    decoy_v90.write_bytes(b"decoy")
+    decoy_mycopy = db_path.with_suffix(".v9-backup-mycopy")
+    decoy_mycopy.write_bytes(b"decoy")
+    decoy_bak = db_path.with_suffix(f".v9-backup-{valid_stamps[0]}.bak")
+    decoy_bak.write_bytes(b"decoy")
+    decoy_lowercase_z = db_path.with_suffix(".v9-backup-20260101T000000000006z")
+    decoy_lowercase_z.write_bytes(b"decoy")
+    decoy_dir = db_path.with_suffix(".v9-backup-20240101T000000000001Z")
+    decoy_dir.mkdir()
+    # Arabic-Indic digits: \d would match these, the ASCII-only stamp pattern must not.
+    decoy_non_ascii = db_path.with_suffix(".v9-backup-٢٠٢٦0101T000000000000Z")
+    decoy_non_ascii.write_bytes(b"decoy")
+
+    just_written = valid_paths[-1]
+    _prune_timestamped_backups(db_path, 9, just_written)
+
+    for decoy in (
+        decoy_v0, decoy_v8, decoy_v90, decoy_mycopy, decoy_bak, decoy_lowercase_z, decoy_dir, decoy_non_ascii,
+    ):
+        assert decoy.exists(), f"{decoy} should never be touched"
+
+    remaining_valid = [p for p in valid_paths if p.exists()]
+    assert len(remaining_valid) == 3, f"Expected exactly 3 valid v9 backups remaining, got {remaining_valid}"
+
+
+def test_prune_logs_one_info_line_per_deleted_backup(tmp_path):
+    """BKUP-02/D-08: each deleted retry backup logs one INFO line naming the file."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    just_written = paths[-1]
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="INFO")
+    try:
+        _prune_timestamped_backups(db_path, 9, just_written)
+    finally:
+        logger.remove(handler_id)
+
+    log_text = sink.getvalue()
+    info_lines = [line for line in log_text.splitlines() if line.startswith("INFO")]
+    assert len(info_lines) == 2, f"Expected exactly 2 INFO lines, got: {log_text!r}"
+    deleted_names = {paths[0].name, paths[1].name}
+    for line in info_lines:
+        assert any(name in line for name in deleted_names), f"INFO line must name a deleted file: {line!r}"
+        assert "3 most recent" in line, f"INFO line must state the 3 most recent are kept: {line!r}"
+    assert "WARNING" not in log_text
+
+
+def test_prune_unlink_failure_logs_warning_and_continues(tmp_path, monkeypatch):
+    """BKUP-02/D-04/D-09: a failed deletion logs one WARNING and the rest still run,
+    even when the FIRST deletion attempted is the one that fails."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    stale_candidates = {paths[0], paths[1]}
+    just_written = paths[-1]
+
+    original_unlink = Path.unlink
+    calls: dict[str, object] = {"first_path": None, "count": 0}
+
+    def _patched_unlink(self, *args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            calls["first_path"] = self
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _patched_unlink)
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="INFO")
+    try:
+        _prune_timestamped_backups(db_path, 9, just_written)  # must not raise
+    finally:
+        logger.remove(handler_id)
+
+    failed_path = calls["first_path"]
+    assert failed_path in stale_candidates, f"First unlink attempt must target a stale file, got {failed_path}"
+    other_path = next(iter(stale_candidates - {failed_path}))
+
+    assert failed_path.exists(), "The file whose deletion failed must still exist"
+    assert not other_path.exists(), "The other stale file must still be deleted"
+    for kept in paths[2:]:
+        assert kept.exists(), f"{kept} is one of the 3 newest-named files and must survive"
+
+    log_text = sink.getvalue()
+    lines = log_text.splitlines()
+    warning_lines = [line for line in lines if line.startswith("WARNING")]
+    info_lines = [line for line in lines if line.startswith("INFO")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {log_text!r}"
+    assert failed_path.name in warning_lines[0]
+    assert "PermissionError" in warning_lines[0]
+    assert len(info_lines) == 1, f"Expected exactly 1 INFO line, got: {log_text!r}"
+    assert other_path.name in info_lines[0]
+    assert "ERROR" not in log_text
+
+
+def test_prune_listing_failure_logs_warning(tmp_path, monkeypatch):
+    """BKUP-02/D-04/D-09: a failure while listing the directory logs one WARNING
+    and deletes nothing."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 4)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    def _raising_iterdir(self):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(Path, "iterdir", _raising_iterdir)
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="INFO")
+    try:
+        _prune_timestamped_backups(db_path, 9, paths[-1])  # must not raise
+    finally:
+        logger.remove(handler_id)
+
+    log_text = sink.getvalue()
+    warning_lines = [line for line in log_text.splitlines() if line.startswith("WARNING")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {log_text!r}"
+    assert "OSError" in warning_lines[0]
+    for p in paths:
+        assert p.exists(), f"{p} must not be deleted when listing fails"
+    assert canonical.exists()
+
+
+async def test_run_migrations_proceeds_when_pruning_fails(tmp_path, monkeypatch):
+    """BKUP-02/D-04 end to end: a pruning failure never blocks run_migrations."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    for i in range(1, 4):
+        ts_path = db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z")
+        shutil.copy2(db_path, ts_path)
+
+    original_unlink = Path.unlink
+
+    def _failing_unlink(self, *args, **kwargs):
+        if self.name.startswith("test.v9-backup-"):
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _failing_unlink)
+
+    db = await aiosqlite.connect(db_path)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="WARNING")
+    try:
+        await run_migrations(db, db_path)  # must not raise
+    finally:
+        logger.remove(handler_id)
+
+    try:
+        version = await get_schema_version(db)
+        assert version == 10
+    finally:
+        await db.close()
+
+    log_text = sink.getvalue()
+    assert any(
+        line.startswith("WARNING") and "Could not remove old retry backup" in line for line in log_text.splitlines()
+    ), f"Expected the pruning WARNING line, got: {log_text!r}"
+    assert "ERROR" not in log_text

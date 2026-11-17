@@ -13,5 +13,12 @@
     "code_review_depth": "standard"
   },
   "granularity": "standard",
-  "resolve_model_ids": true
+  "resolve_model_ids": true,
+  "model_overrides": {
+    "bm-planner": "fable",
+    "bm-plan-checker": "fable",
+    "bm-verifier": "fable",
+    "bm-roadmapper": "fable",
+    "bm-codebase-mapper": "sonnet"
+  }
 }

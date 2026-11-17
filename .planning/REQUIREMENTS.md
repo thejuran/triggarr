@@ -40,8 +40,8 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Upgrade Backups
 
-- [ ] **BKUP-01**: Pre-upgrade database backups are bounded: the original backup taken before the first upgrade attempt is always kept, plus at most the 3 most recent later ones.
-- [ ] **BKUP-02**: Pruning never removes the original backup or the one just written, orders backups by the timestamp in their names, and a pruning failure is logged without blocking startup.
+- [x] **BKUP-01**: Pre-upgrade database backups are bounded: the original backup taken before the first upgrade attempt is always kept, plus at most the 3 most recent later ones.
+- [x] **BKUP-02**: Pruning never removes the original backup or the one just written, orders backups by the timestamp in their names, and a pruning failure is logged without blocking startup.
 
 ### Removed-Instance Searches
 
@@ -52,8 +52,8 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Telemetry
 
-- [ ] **TELEM-01**: With `FASTAPI_OTEL_AUTO_CONFIGURE` and an OTLP endpoint set in the container environment, Triggarr starts and serves requests; an automated test pins this.
-- [ ] **TELEM-02**: The documentation states that telemetry export is unsupported and that nothing is exported.
+- [x] **TELEM-01**: With `FASTAPI_OTEL_AUTO_CONFIGURE` and an OTLP endpoint set in the container environment, Triggarr starts and serves requests; an automated test pins this.
+- [x] **TELEM-02**: The documentation states that telemetry export is unsupported and that nothing is exported.
 
 ### Recovery Demonstration
 
@@ -95,10 +95,10 @@ Which phases cover which requirements.
 | CONSIST-01 | Phase 87 | Pending |
 | CONSIST-02 | Phase 87 | Pending |
 | CONSIST-03 | Phase 87 | Pending |
-| BKUP-01 | Phase 88 | Pending |
-| BKUP-02 | Phase 88 | Pending |
-| TELEM-01 | Phase 88 | Pending |
-| TELEM-02 | Phase 88 | Pending |
+| BKUP-01 | Phase 88 | Complete |
+| BKUP-02 | Phase 88 | Complete |
+| TELEM-01 | Phase 88 | Complete |
+| TELEM-02 | Phase 88 | Complete |
 | LIFE-01 | Phase 89 | Pending |
 | LIFE-02 | Phase 89 | Pending |
 | LIFE-03 | Phase 89 | Pending |

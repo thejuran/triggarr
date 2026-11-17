@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "in review -- Phase 87 executed (3 of 3 plans); reviewed locally at e90f8cef (BM iteration 5: no critical or warning; Codex: 1 medium, the known cancellation gap); owner decision pending (not pushed)"
-stopped_at: "Phase 87 reviewed locally at e90f8cef: BM iteration 5 has 0 critical, 0 warning, 1 info, 2 set aside; Codex contract pass complete with 1 medium finding F001 (removal cancelled mid-save; the same gap the owner sent to the backlog at 0cb0f12e -- disposition for this head not yet confirmed). Deep review (vibe-check) closed with owner decisions. Still owed before push: owner disposition of Codex F001 at this head and a ruling on the directory-handle item, /bm:secure-phase 87, goal verification on the final code, browser checks on the final code (1-2 passed at f099c6a8 only), screen-reader check"
-last_updated: "2026-11-16T02:57:00.000Z"
-last_activity: "2026-11-15 -- Phase 87 BM iteration 5 + Codex contract pass at e90f8cef"
+status: executing
+stopped_at: "Phase 88 verified locally (20/20, 1 owner override) after 3 BM + Codex review rounds; branch not yet pushed, PR and owner acceptance pending"
+last_updated: "2026-11-17T04:05:00.000Z"
+last_activity: 2026-11-17 -- Phase 88 review rounds finished (Codex 0 findings on 9018a341) and goal verification passed
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 3
-  completed_plans: 3
-  percent: 0
+  completed_phases: 1
+  total_plans: 5
+  completed_plans: 5
+  percent: 17
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.14 Reliability, Phase 87 executing. v2.12.1 is published and running in production.
+**Current focus:** Phase 88: bounded-upgrade-backups-telemetry-regression
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
-Plan: 3 of 3 executed
-Status: Phase 87 executed, in review — reviewed locally at e90f8cef; owner decision pending on Codex F001 at this head
-Last activity: 2026-11-15 — Phase 87 BM iteration 5 + Codex contract pass at e90f8cef
+Phase: 88 (bounded-upgrade-backups-telemetry-regression) — IN REVIEW (verified locally; PR and owner acceptance pending)
+Plan: 2 of 2 executed (88-01 bounded backups, BKUP-01/02 complete; 88-02 telemetry regression, TELEM-01/02 complete)
+Status: Phase 88 in review -- both plans executed; BM review 3 rounds (final: 0 critical, 0 warning), paired Codex complete with 0 findings on 9018a341, goal verification passed with 1 owner override (D-12 vs WR-02); next: push branch and open the phase PR
+Last activity: 2026-11-17 -- Phase 88 review rounds finished and goal verification passed
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -102,9 +102,12 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 
 Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
 
+- [Phase 88-01]: Followed CONTEXT.md D-01..D-09 exactly: no new dependency; canonical and just-written backups are structurally excluded from the prune candidate set, not merely filtered by a rule that could be bypassed.
+- [Phase 88-02]: No code change to `triggarr/` and no new dependency (D-01); the telemetry regression test drives FastAPI's real ASGI lifespan via `TestClient` (not `async with lifespan_fn(app):`, which never reaches FastAPI's own telemetry wrapper), with an uncommitted negative control proving it would catch a regression (Run 1 FAIL, Run 2 PASS, recorded in 88-02-SUMMARY.md).
+
 ### Pending Todos
 
-- Bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). In v2.14 Reliability scope since 2026-11-15; now Phase 88 (BKUP-01/02).
+None currently pending. (Bound/prune timestamped pre-migration DB backups, previously tracked here, closed 2026-11-17 by Phase 88 plan 01 -- BKUP-01/02.)
 
 ### Roadmap Evolution
 
@@ -164,17 +167,19 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 | follow-up | Add a "superseded by PILOT-03" note to docs/bm-greptile-codex-blueprint.md | Deferred (rides with the next substantive PR) |
 | follow-up | Draft VALIDATION.md files for Phases 83, 85 and 86 (nyquist_compliant false) | Deferred (owner has not asked for them) |
 | follow-up | Tag-triggered publication is unverified until the next authorized release (Phase 82 waiver) | Closed 2026-11-15: tag-triggered Release run 43758123019 succeeded for v2.12.1 |
+| follow-up | Phase 87 deep-review deferrals: `save_settings` close loop not cancellation-safe, self-cancelled close aborts a committed removal's response, startup set-aside copy blocks the loop, BM iteration 6 IN-01..03 | Deferred 2026-11-16 (backlog/MAINTENANCE.md) |
 | follow-up | Isolated Codex review for bot/fork PRs is incomplete on current Codex models (Phase 85.1 exception); vibe-check fallback stays | Deferred (reopening tracked in backlog/MAINTENANCE.md) |
 
 ## Session Continuity
 
-Last session: 2026-11-15T21:35:16.692Z
-Stopped at: Phase 87 context gathered (87-CONTEXT.md); planning not started
-Resume file: .planning/phases/87-settings-state-file-safety/87-CONTEXT.md
+Last session: 2026-11-17T04:05:00.000Z
+Stopped at: Phase 88 verified locally (20/20, 1 owner override) after 3 BM + Codex review rounds; branch not yet pushed
+Resume file: None -- next step is the end-of-phase push and PR (offer /deep-review first; record the checkpoint per docs/review-checkpoint-record.md on the PR head)
 
 ## Operator Next Steps
 
-- Phase 87 is planned (3 plans in 2 waves: 87-01 and 87-03 first, then 87-02; plan check ran 3 rounds, no blockers); execute it next (`/bm:execute-phase 87`). Work is on branch `phase-87-settings-state-file-safety`, which carries the held `planning/post-v2.12.1` commits
+- Discuss Phase 88 next (`/bm:discuss-phase 88`), on branch `phase-88-bounded-upgrade-backups-telemetry-regression` (cut from main at `d7704342`; carries Phase 87's closeout records: this update, the PR #62 checkpoint copy and the PR-head Codex evidence)
+- Production compose tracks `:main`, so a pull and recreate now runs Phase 87; not done yet
 - Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. The held branch `planning/post-v2.12.1` is pushed with the next substantive push, not on its own (no docs-only PRs)
 - Decide BM SA-01 (pin the uv version CI installs) -- see backlog/MAINTENANCE.md. SA-12 is in v2.14 scope in reduced form (startup is not affected; regression check plus an "unsupported" note)
 - Release follow-ups from v2.12.1: remove the temporary `zlib1g` Dockerfile step once the base image carries the fix; update the `idna` text in docs/ci-negative-demonstrations.md; add the "superseded by PILOT-03" note to the blueprint -- see backlog/MAINTENANCE.md and Deferred Items

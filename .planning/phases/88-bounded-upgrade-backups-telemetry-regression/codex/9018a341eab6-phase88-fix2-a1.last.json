@@ -1,0 +1,93 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "9018a341eab675170408c1a88648e597350a6f09",
+  "inspected_base_sha": "d7704342b5978adc6ce883b20b6648dff3e1753a",
+  "pr_url": "none",
+  "scope": "Phase 88: bounded upgrade backups and telemetry regression, after fix round 2; full specified diff plus changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found in the scoped changes. Reviewed backup retention, interrupted-copy recovery, failure handling, telemetry startup coverage, and changed executor plans. Harness evidence reports 3351 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "All five files in the scoped implementation diff: .planning/config.json, README.md, tests/test_db.py, tests/test_telemetry.py, and triggarr/db.py.",
+    "Both changed phase plans: 88-01-PLAN.md and 88-02-PLAN.md, including execution instructions, acceptance criteria, negative controls, and threat models.",
+    "Backup retention ordering, canonical preservation, backward-clock handling, filename boundaries, pre-copy capacity reclamation, abandoned staging files, and cleanup failures.",
+    "Migration callers, transaction rollback, database initialization, and the supported single-process startup model.",
+    "Regression assertions and injected failure paths, including failed copies, failed deletion, failed directory listing, repeated failed migrations, and eventual success.",
+    "Telemetry environment isolation, actual ASGI lifespan dispatch, warning assertion, health response, installed FastAPI implementation, and locked production dependency installation.",
+    "Planning configuration and acceptance-policy changes; no disabled review or verification gates found."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Raw review transcripts, .planning/**/*.jsonl, and generated review artifacts under .planning/**/codex/**.",
+    "Pre-existing defects outside the scoped changes."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify the inspected checkout."
+    },
+    {
+      "command": "git cat-file -e d7704342b5978adc6ce883b20b6648dff3e1753a",
+      "exit_code": 0,
+      "purpose": "Confirm the requested base exists."
+    },
+    {
+      "command": "git diff --stat d7704342b5978adc6ce883b20b6648dff3e1753a..9018a341eab675170408c1a88648e597350a6f09 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Enumerate implementation scope."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..9018a341eab675170408c1a88648e597350a6f09 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed executor plans; truncated portions were read separately."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence and verify its commit."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..9018a341eab675170408c1a88648e597350a6f09 -- triggarr/db.py tests/test_telemetry.py README.md .planning/config.json",
+      "exit_code": 0,
+      "purpose": "Inspect production, telemetry, documentation, and configuration changes."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..9018a341eab675170408c1a88648e597350a6f09 -- tests/test_db.py",
+      "exit_code": 0,
+      "purpose": "Inspect all added backup tests; truncated portions were read separately."
+    },
+    {
+      "command": "sed -n '130,226p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete inspection of the first plan."
+    },
+    {
+      "command": "sed -n '1,65p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-02-PLAN.md; sed -n '2660,2730p' tests/test_db.py",
+      "exit_code": 0,
+      "purpose": "Recover portions truncated from earlier plan and test output."
+    },
+    {
+      "command": "sed -n '1,178p' triggarr/db.py; sed -n '291,430p' triggarr/db.py; rg -n 'init_db|run_migrations|aiosqlite.connect|uvicorn|workers|journal_mode' triggarr/search/scheduler.py triggarr/__main__.py Dockerfile docker-compose.yml tests/migration_faults.py pyproject.toml; rg -n 'create_lifespan|yield|shutdown|check_for_update' triggarr/search/scheduler.py; rg --files -g '*AGENTS*' -g '*telemetry*' -g '*runtime*' -g 'python*' -g '*PLAN.md' .planning/phases/88-bounded-upgrade-backups-telemetry-regression .venv",
+      "exit_code": 0,
+      "purpose": "Trace migration behavior, startup callers, concurrency assumptions, and relevant local files."
+    },
+    {
+      "command": "sed -n '460,570p' triggarr/search/scheduler.py; sed -n '640,675p' triggarr/search/scheduler.py; sed -n '1,100p' triggarr/__main__.py; sed -n '25,90p' tests/migration_faults.py; rg -n -A65 '^async def init_db' triggarr/db.py; cat pyproject.toml; ls -ld .venv .venv/bin/python .venv/bin/pytest; git status --short; git diff --name-only d7704342b5978adc6ce883b20b6648dff3e1753a..9018a341eab675170408c1a88648e597350a6f09 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect startup integration, fixtures, dependencies, interpreter availability, working-tree status, and plan inventory."
+    },
+    {
+      "command": "rg -n 'auto_configure|automatic telemetry|OTEL_SDK_DISABLED|lifespan' .venv/lib/python3.13/site-packages/fastapi/telemetry/_runtime.py .venv/lib/python3.13/site-packages/fastapi/applications.py; sed -n '1,240p' .venv/lib/python3.13/site-packages/fastapi/telemetry/_runtime.py; rg -n -A8 '@router.get\\(\"/health\"' triggarr/web/routes.py; cat Dockerfile; cat .planning/config.json",
+      "exit_code": 0,
+      "purpose": "Validate telemetry assertions against local dependency source and inspect deployment and policy context."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest: the sandbox is read-only, tests require filesystem writes, and the available virtual-environment interpreter resolves outside the permitted working-copy boundary. Used the exact-head harness evidence instead.",
+    "Disk exhaustion and process interruption were assessed through source tracing and the committed fault-injection tests, without independent live reproduction.",
+    "Reviewed concurrency under the application's supported single-process startup model; did not exercise simultaneous processes sharing a database directory."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
