@@ -212,6 +212,8 @@ search_cutoff_count = 5             # cutoff/upgrade albums to search per cycle
 
 Startup-level environment variables such as `TRIGGARR_CONFIG_DIR`, `TRUSTED_PROXY_IPS`, and `ROOT_PATH` are read by the process before the TOML settings are loaded; they are not stored in `triggarr.toml`.
 
+Triggarr does not support OpenTelemetry export. Setting `FASTAPI_OTEL_AUTO_CONFIGURE` or an OTLP endpoint such as `OTEL_EXPORTER_OTLP_ENDPOINT` does not stop Triggarr from starting, but nothing is exported.
+
 ## Screenshots
 
 ![Triggarr dashboard showing app cards, grab rate stats, and live recent activity](docs/screenshots/dashboard.png)
