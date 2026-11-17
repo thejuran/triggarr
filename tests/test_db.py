@@ -2962,7 +2962,7 @@ async def test_run_migrations_proceeds_when_pruning_fails(tmp_path, monkeypatch)
         await db.close()
 
     log_text = sink.getvalue()
-    assert any(line.startswith("WARNING") for line in log_text.splitlines()), (
-        f"Expected at least one WARNING line from pruning, got: {log_text!r}"
-    )
+    assert any(
+        line.startswith("WARNING") and "Could not remove old retry backup" in line for line in log_text.splitlines()
+    ), f"Expected the pruning WARNING line, got: {log_text!r}"
     assert "ERROR" not in log_text
