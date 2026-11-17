@@ -111,6 +111,13 @@ class MigrationRecoveryError(RuntimeError):
     """Raised when a migration finds a leftover partial state it cannot safely resolve itself."""
 
 
+# BKUP-01/02: a crash-looping failed upgrade from the same schema version
+# writes a new timestamped backup on every attempt; this caps how many of
+# those timestamped copies are kept per version.
+_BACKUP_STAMP_RE = re.compile(r"\d{8}T\d{12}Z")  # matches datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+_MAX_RETAINED_TIMESTAMPED_BACKUPS = 3
+
+
 async def _apply_atomic_migration(
     db: aiosqlite.Connection,
     version: int,
@@ -169,6 +176,46 @@ async def _apply_atomic_migration(
         raise
 
 
+def _prune_timestamped_backups(db_path: Path, current: int, just_written: Path) -> None:
+    """Keep at most the N most recent timestamped retry backups for `current`.
+
+    Only files named exactly ``<db stem>.v{current}-backup-<stamp>``, where
+    ``<stamp>`` fully matches the ``%Y%m%dT%H%M%S%fZ`` format, are ever
+    candidates for deletion (D-07) -- the canonical ``.v{current}-backup``
+    file has no such suffix and can never match, and the backup just
+    written by this call is always excluded (D-02/D-03). Candidates are
+    ordered by the stamp embedded in the file name, never by file mtime,
+    because ``shutil.copy2`` preserves the source database's mtime rather
+    than the backup's own creation time (D-03).
+    """
+    canonical_name = db_path.with_suffix(f".v{current}-backup").name
+    prefix = canonical_name + "-"
+
+    candidates: list[tuple[str, Path]] = []
+    for entry in db_path.parent.iterdir():
+        if entry == just_written:
+            continue
+        if not entry.name.startswith(prefix):
+            continue
+        stamp = entry.name[len(prefix) :]
+        if not _BACKUP_STAMP_RE.fullmatch(stamp):
+            continue
+        if not entry.is_file():
+            continue
+        candidates.append((stamp, entry))
+
+    # Fixed-width stamp -> lexicographic order is chronological order.
+    candidates.sort(key=lambda pair: pair[0], reverse=True)
+
+    for _stamp, stale_path in candidates[_MAX_RETAINED_TIMESTAMPED_BACKUPS - 1 :]:
+        stale_path.unlink(missing_ok=True)
+        logger.info(
+            "Removed old retry backup {path}; keeping the original backup and the {n} most recent",
+            path=stale_path,
+            n=_MAX_RETAINED_TIMESTAMPED_BACKUPS,
+        )
+
+
 async def run_migrations(
     db: aiosqlite.Connection,
     db_path: Path,
@@ -199,7 +246,10 @@ async def run_migrations(
     # The canonical backup name is never overwritten -- if it already exists
     # (e.g. a prior failed attempt), a second, timestamped backup is written
     # alongside it, so the recovery error below can always point at the
-    # earliest backup taken before any failed attempt.
+    # earliest backup taken before any failed attempt. A crash-looping
+    # failed upgrade would otherwise write one more timestamped backup per
+    # attempt forever, so timestamped copies are capped at the
+    # _MAX_RETAINED_TIMESTAMPED_BACKUPS most recent (BKUP-01/02).
     backup_path = db_path.with_suffix(f".v{current}-backup")
     earliest_backup: Path | None = None
     if db_path.exists():
@@ -213,6 +263,7 @@ async def run_migrations(
                 earlier=backup_path,
             )
             earliest_backup = backup_path
+            _prune_timestamped_backups(db_path, current, timestamped_path)
         else:
             shutil.copy2(db_path, backup_path)
             logger.info("Database backed up to {path}", path=backup_path)
