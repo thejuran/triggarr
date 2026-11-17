@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 from pathlib import Path
 
 import aiosqlite
@@ -2772,3 +2773,135 @@ def test_prune_logs_one_info_line_per_deleted_backup(tmp_path):
         assert any(name in line for name in deleted_names), f"INFO line must name a deleted file: {line!r}"
         assert "3 most recent" in line, f"INFO line must state the 3 most recent are kept: {line!r}"
     assert "WARNING" not in log_text
+
+
+def test_prune_unlink_failure_logs_warning_and_continues(tmp_path, monkeypatch):
+    """BKUP-02/D-04/D-09: a failed deletion logs one WARNING and the rest still run,
+    even when the FIRST deletion attempted is the one that fails."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 6)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    stale_candidates = {paths[0], paths[1]}
+    just_written = paths[-1]
+
+    original_unlink = Path.unlink
+    calls: dict[str, object] = {"first_path": None, "count": 0}
+
+    def _patched_unlink(self, *args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            calls["first_path"] = self
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _patched_unlink)
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="INFO")
+    try:
+        _prune_timestamped_backups(db_path, 9, just_written)  # must not raise
+    finally:
+        logger.remove(handler_id)
+
+    failed_path = calls["first_path"]
+    assert failed_path in stale_candidates, f"First unlink attempt must target a stale file, got {failed_path}"
+    other_path = next(iter(stale_candidates - {failed_path}))
+
+    assert failed_path.exists(), "The file whose deletion failed must still exist"
+    assert not other_path.exists(), "The other stale file must still be deleted"
+    for kept in paths[2:]:
+        assert kept.exists(), f"{kept} is one of the 3 newest-named files and must survive"
+
+    log_text = sink.getvalue()
+    lines = log_text.splitlines()
+    warning_lines = [line for line in lines if line.startswith("WARNING")]
+    info_lines = [line for line in lines if line.startswith("INFO")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {log_text!r}"
+    assert failed_path.name in warning_lines[0]
+    assert "PermissionError" in warning_lines[0]
+    assert len(info_lines) == 1, f"Expected exactly 1 INFO line, got: {log_text!r}"
+    assert other_path.name in info_lines[0]
+    assert "ERROR" not in log_text
+
+
+def test_prune_listing_failure_logs_warning(tmp_path, monkeypatch):
+    """BKUP-02/D-04/D-09: a failure while listing the directory logs one WARNING
+    and deletes nothing."""
+    from triggarr.db import _prune_timestamped_backups
+
+    db_path = tmp_path / "test.db"
+    canonical = db_path.with_suffix(".v9-backup")
+    canonical.write_bytes(b"canonical")
+
+    stamps = [f"20260101T00000000000{i}Z" for i in range(1, 4)]
+    paths = [db_path.with_suffix(f".v9-backup-{stamp}") for stamp in stamps]
+    for p in paths:
+        p.write_bytes(b"backup")
+
+    def _raising_iterdir(self):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(Path, "iterdir", _raising_iterdir)
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="INFO")
+    try:
+        _prune_timestamped_backups(db_path, 9, paths[-1])  # must not raise
+    finally:
+        logger.remove(handler_id)
+
+    log_text = sink.getvalue()
+    warning_lines = [line for line in log_text.splitlines() if line.startswith("WARNING")]
+    assert len(warning_lines) == 1, f"Expected exactly 1 WARNING line, got: {log_text!r}"
+    assert "OSError" in warning_lines[0]
+    for p in paths:
+        assert p.exists(), f"{p} must not be deleted when listing fails"
+    assert canonical.exists()
+
+
+async def test_run_migrations_proceeds_when_pruning_fails(tmp_path, monkeypatch):
+    """BKUP-02/D-04 end to end: a pruning failure never blocks run_migrations."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+
+    canonical = db_path.with_suffix(".v9-backup")
+    shutil.copy2(db_path, canonical)
+    for i in range(1, 4):
+        ts_path = db_path.with_suffix(f".v9-backup-2020010{i}T000000000000Z")
+        shutil.copy2(db_path, ts_path)
+
+    original_unlink = Path.unlink
+
+    def _failing_unlink(self, *args, **kwargs):
+        if self.name.startswith("test.v9-backup-"):
+            raise PermissionError(13, "Permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _failing_unlink)
+
+    db = await aiosqlite.connect(db_path)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{level} {message}", level="WARNING")
+    try:
+        await run_migrations(db, db_path)  # must not raise
+    finally:
+        logger.remove(handler_id)
+
+    try:
+        version = await get_schema_version(db)
+        assert version == 10
+    finally:
+        await db.close()
+
+    log_text = sink.getvalue()
+    assert any(line.startswith("WARNING") for line in log_text.splitlines()), (
+        f"Expected at least one WARNING line from pruning, got: {log_text!r}"
+    )
+    assert "ERROR" not in log_text
