@@ -2789,11 +2789,16 @@ def test_prune_ignores_other_versions_and_non_matching_names(tmp_path):
     decoy_lowercase_z.write_bytes(b"decoy")
     decoy_dir = db_path.with_suffix(".v9-backup-20240101T000000000001Z")
     decoy_dir.mkdir()
+    # Arabic-Indic digits: \d would match these, the ASCII-only stamp pattern must not.
+    decoy_non_ascii = db_path.with_suffix(".v9-backup-٢٠٢٦0101T000000000000Z")
+    decoy_non_ascii.write_bytes(b"decoy")
 
     just_written = valid_paths[-1]
     _prune_timestamped_backups(db_path, 9, just_written)
 
-    for decoy in (decoy_v0, decoy_v8, decoy_v90, decoy_mycopy, decoy_bak, decoy_lowercase_z, decoy_dir):
+    for decoy in (
+        decoy_v0, decoy_v8, decoy_v90, decoy_mycopy, decoy_bak, decoy_lowercase_z, decoy_dir, decoy_non_ascii,
+    ):
         assert decoy.exists(), f"{decoy} should never be touched"
 
     remaining_valid = [p for p in valid_paths if p.exists()]

@@ -114,7 +114,9 @@ class MigrationRecoveryError(RuntimeError):
 # BKUP-01/02: a crash-looping failed upgrade from the same schema version
 # writes a new timestamped backup on every attempt; this caps how many of
 # those timestamped copies are kept per version.
-_BACKUP_STAMP_RE = re.compile(r"\d{8}T\d{12}Z")  # matches datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+# ASCII digits only (\d would also match non-ASCII digits); matches
+# datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ").
+_BACKUP_STAMP_RE = re.compile(r"[0-9]{8}T[0-9]{12}Z")
 _MAX_RETAINED_TIMESTAMPED_BACKUPS = 3
 
 
