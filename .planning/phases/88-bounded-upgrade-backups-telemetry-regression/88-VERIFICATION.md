@@ -2,27 +2,24 @@
 phase: 88-bounded-upgrade-backups-telemetry-regression
 verified: 2026-11-17T03:45:00Z
 verified_head: d0df8637
-status: gaps_found
-score: 19/20 must-haves verified
+status: passed
+score: 20/20 must-haves verified (1 via owner override)
 has_blocking_gaps: false
-overrides_applied: 0
-gaps:
-  - truth: "The test asserts only the outcome (startup completes, /health 200); it does not reference FastAPI's warning wording or private telemetry modules (D-12, Pitfall 11)"
-    status: failed
-    severity: minor
-    reason: "tests/test_telemetry.py line 51 asserts the substring 'automatic telemetry configuration failed' from FastAPI's own startup warning. This was added deliberately by review fix WR-02 (commit 621aebb0) so the test cannot stay green if FastAPI renames or drops FASTAPI_OTEL_AUTO_CONFIGURE. It achieves the roadmap criterion (SC 3) but contradicts the PLAN truth and PLAN 02 acceptance grep, and reintroduces the brittleness D-12 / research Pitfall 11 warned about: a FastAPI release that rewords the warning turns this test red on a dependency bump."
-    artifacts:
-      - path: "tests/test_telemetry.py"
-        issue: "Line 51 pins FastAPI's warning wording; PLAN 02 truth 3 and the acceptance grep for 'telemetry configuration failed' both expect it absent"
-    missing:
-      - "Owner decision: accept the WR-02 tradeoff via an override entry (recommended; the private module name is still not referenced), or replace the wording assertion with a wording-independent signal that the auto-configure path ran (for example asserting a WARNING-level record exists on the 'fastapi' logger without matching its text)"
+overrides_applied: 1
+overrides:
+  - must_have: "The test asserts only the outcome (startup completes, /health 200); it does not reference FastAPI's warning wording or private telemetry modules (D-12, Pitfall 11)"
+    reason: "Review WR-02 (round 1) required proof that the auto-configure path ran; asserting FastAPI's warning text is the chosen signal, so the test cannot stay green while exercising nothing. No private module is referenced. Accepted brittleness: a FastAPI wording change turns the test red on a dependency bump (visible, easy to fix)."
+    accepted_by: "owner"
+    accepted_at: "2026-11-17"
+    decision: "Keep the wording check (owner answer to the D-12 vs WR-02 question, 2026-11-17)"
+gaps: []
 ---
 
 # Phase 88: Bounded Upgrade Backups & Telemetry Regression Verification Report
 
 **Phase Goal:** Pre-upgrade database backups stay bounded through a crash loop, and the telemetry environment variable can never again crash startup.
 **Verified:** 2026-11-17T03:45:00Z at branch head `d0df8637` (phase branch)
-**Status:** gaps_found (one minor, non-blocking gap; no blocking gaps)
+**Status:** passed after owner override (originally gaps_found: one minor, non-blocking gap, PLAN 02 truth 3 vs review fix WR-02; the owner accepted the WR-02 wording check on 2026-11-17, overriding D-12 for this assertion)
 **Re-verification:** No — initial verification
 
 Verification was done against the code at HEAD, not against the SUMMARYs. Two review-fix rounds changed `triggarr/db.py` and `tests/test_telemetry.py` after the SUMMARYs were written; criterion 2 was judged against the current pre-copy-prune, stage-then-rename, reclaim-stale-partial behavior.
