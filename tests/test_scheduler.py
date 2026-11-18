@@ -12,6 +12,7 @@ import importlib
 import io
 import re
 import shutil
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -2342,3 +2343,328 @@ async def test_lifespan_restart_after_legacy_import_neither_reimports_nor_moves_
     assert len(first[0]) == 1
     assert second == first
     assert [name for _, name in second[1]] == ["Old Show S01", "Old Show S02", "Old Movie"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 89: startup/shutdown resource cleanup (LIFE-01..03)
+# ---------------------------------------------------------------------------
+
+_CAP = "triggarr.search.scheduler._CLEANUP_STEP_TIMEOUT"
+
+
+def _capture_sink(level: str = "WARNING") -> tuple[io.StringIO, int]:
+    sink = io.StringIO()
+    return sink, logger.add(sink, format="{level} | {message}", level=level)
+
+
+def _sink_lines(sink: io.StringIO) -> list[str]:
+    return [line for line in sink.getvalue().splitlines() if line.strip()]
+
+
+def test_cleanup_step_timeout_default_is_5s():
+    from triggarr.search.scheduler import _CLEANUP_STEP_TIMEOUT
+
+    assert _CLEANUP_STEP_TIMEOUT == 5.0
+    assert isinstance(_CLEANUP_STEP_TIMEOUT, float)
+
+
+async def test_safe_close_returns_true_on_success():
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    close_fn = AsyncMock()
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = await _safe_close("Shutdown", "database", close_fn)
+    finally:
+        logger.remove(sink_id)
+    assert result is True
+    close_fn.assert_awaited_once()
+    assert _sink_lines(sink) == []
+    assert len(_ABANDONED_CLOSE_TASKS) == 0
+
+
+async def test_safe_close_logs_sanitized_warning_and_returns_false_on_exception():
+    from triggarr.search.scheduler import _safe_close
+
+    close_fn = AsyncMock(side_effect=AssertionError("in-flight close"))
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = await _safe_close("Shutdown", "Sonarr/'anime' connection", close_fn)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    lines = _sink_lines(sink)
+    warnings = [line for line in lines if line.startswith("WARNING | ")]
+    assert warnings == ["WARNING | Shutdown: could not close Sonarr/'anime' connection (AssertionError); continuing"]
+    assert "in-flight close" not in sink.getvalue()
+
+
+async def test_safe_close_never_logs_url_credentials():
+    from triggarr.search.scheduler import _safe_close
+
+    exc = httpx.ConnectError("boom", request=httpx.Request("GET", "http://sonarr:8989/api?apikey=SECRET-KEY-123"))
+    close_fn = AsyncMock(side_effect=exc)
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = await _safe_close("Shutdown", "Sonarr/'Default' connection", close_fn)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    output = sink.getvalue()
+    assert "SECRET-KEY-123" not in output
+    assert "apikey" not in output
+    warnings = [line for line in _sink_lines(sink) if line.startswith("WARNING | ")]
+    assert len(warnings) == 1
+    assert "HTTP error: ConnectError" in warnings[0]
+
+
+async def test_safe_close_times_out_and_continues():
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    async def close_fn():
+        await asyncio.Event().wait()
+
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        with patch(_CAP, 0.05):
+            start = time.monotonic()
+            result = await _safe_close("Shutdown", "database", close_fn)
+            elapsed = time.monotonic() - start
+        await asyncio.sleep(0.05)
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    assert elapsed < 1.0
+    assert _sink_lines(sink) == ["WARNING | Shutdown: database did not close within 0.05s; continuing"]
+    assert remaining == 0
+
+
+async def test_safe_close_returns_at_cap_when_close_waits_in_cancellation_finalizer():
+    # An `async with asyncio.timeout(cap): await close_fn()` implementation fails this
+    # test at "helper task is done": the awaiting task cannot finish while the close
+    # keeps waiting in its own cancellation finalizer (aiosqlite's close() does this).
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    release = asyncio.Event()
+    in_finalizer = asyncio.Event()
+
+    async def close_fn():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            in_finalizer.set()
+            await release.wait()
+
+    sink, sink_id = _capture_sink("WARNING")
+    helper = None
+    try:
+        with patch(_CAP, 0.05):
+            start = time.monotonic()
+            helper = asyncio.ensure_future(_safe_close("Shutdown", "database", close_fn))
+            await asyncio.wait({helper}, timeout=2.0)
+            elapsed = time.monotonic() - start
+            helper_done = helper.done()
+            result = helper.result() if helper_done and not helper.cancelled() else None
+            await asyncio.sleep(0.01)
+            finalizer_reached = in_finalizer.is_set()
+            abandoned = list(_ABANDONED_CLOSE_TASKS)
+            abandoned_pending = [not t.done() for t in abandoned]
+            next_result = await _safe_close("Shutdown", "next step", AsyncMock())
+        warnings = [line for line in _sink_lines(sink) if line.startswith("WARNING | ")]
+        release.set()
+        if abandoned:
+            await asyncio.wait(abandoned, timeout=2.0)
+        after_done = [t.done() for t in abandoned]
+        after_len = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        release.set()
+        if helper is not None and not helper.done():
+            helper.cancel()
+            await asyncio.wait({helper}, timeout=2.0)
+        pending = [t for t in _ABANDONED_CLOSE_TASKS if not t.done()]
+        if pending:
+            await asyncio.wait(pending, timeout=2.0)
+        logger.remove(sink_id)
+    assert helper_done, "helper task is done"
+    assert result is False
+    assert elapsed < 1.0
+    assert finalizer_reached
+    assert len(abandoned) == 1 and abandoned_pending == [True]
+    assert next_result is True
+    assert warnings == ["WARNING | Shutdown: database did not close within 0.05s; continuing"]
+    assert after_done == [True]
+    assert after_len == 0
+
+
+async def test_safe_close_observes_late_failure_of_abandoned_close():
+    import gc
+
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    release = asyncio.Event()
+
+    async def close_fn():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await release.wait()
+            raise RuntimeError("late boom http://x/?apikey=SECRET-KEY-123")
+
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    contexts: list[dict] = []
+    loop.set_exception_handler(lambda _loop, ctx: contexts.append(ctx))
+    sink, sink_id = _capture_sink("DEBUG")
+    helper = None
+    try:
+        with patch(_CAP, 0.05):
+            helper = asyncio.ensure_future(_safe_close("Shutdown", "database", close_fn))
+            await asyncio.wait({helper}, timeout=2.0)
+        abandoned = list(_ABANDONED_CLOSE_TASKS)
+        release.set()
+        if abandoned:
+            await asyncio.wait(abandoned, timeout=2.0)
+        await asyncio.sleep(0.01)
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+        del abandoned
+        helper = None
+        gc.collect()
+        await asyncio.sleep(0)
+        output = sink.getvalue()
+        lines = _sink_lines(sink)
+    finally:
+        release.set()
+        loop.set_exception_handler(previous_handler)
+        logger.remove(sink_id)
+    assert remaining == 0
+    assert [line for line in lines if line.startswith("WARNING | ")] == [
+        "WARNING | Shutdown: database did not close within 0.05s; continuing"
+    ]
+    assert "late boom" not in output
+    assert "SECRET-KEY-123" not in output
+    assert [line for line in lines if line.startswith("DEBUG | ")] == [
+        "DEBUG | Shutdown: abandoned close of database ended after the cap (RuntimeError)"
+    ]
+    assert not any("never retrieved" in str(c.get("message", "")) for c in contexts), contexts
+
+
+async def test_safe_close_retrieves_close_failure_when_caller_is_cancelled():
+    # An implementation that attaches its result observer only `if not task.done()` in
+    # the `finally:` fails this test at the "never retrieved" assertion: the context
+    # message "Task exception was never retrieved" carries the raw RuntimeError text
+    # (probe on Python 3.11.14, 2026-11-18).
+    import gc
+
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    gate = asyncio.Event()
+    parked = asyncio.Event()
+
+    async def close_fn():
+        parked.set()
+        await gate.wait()
+        raise RuntimeError("boom http://x/?apikey=SECRET-KEY-123")
+
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    contexts: list[dict] = []
+    loop.set_exception_handler(lambda _loop, ctx: contexts.append(ctx))
+    sink, sink_id = _capture_sink("DEBUG")
+    cancelled = False
+    try:
+        helper = asyncio.ensure_future(_safe_close("Shutdown", "database", close_fn))
+        await parked.wait()
+        gate.set()
+        helper.cancel()
+        try:
+            await helper
+        except asyncio.CancelledError:
+            cancelled = True
+        del helper
+        for _ in range(2):
+            gc.collect()
+            await asyncio.sleep(0)
+        output = sink.getvalue()
+        lines = _sink_lines(sink)
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        gate.set()
+        loop.set_exception_handler(previous_handler)
+        logger.remove(sink_id)
+    assert cancelled is True
+    assert not any("never retrieved" in str(c.get("message", "")) for c in contexts), contexts
+    for secret in ("SECRET-KEY-123", "apikey", "boom"):
+        assert secret not in output
+        assert not any(secret in repr(c) for c in contexts)
+    assert [line for line in lines if line.startswith("WARNING | ")] == [
+        "WARNING | Shutdown: could not close database (RuntimeError); continuing"
+    ]
+    assert remaining == 0
+
+
+async def test_safe_close_returns_at_cap_on_wedged_real_aiosqlite_close(tmp_path):
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    conn = await aiosqlite.connect(tmp_path / "wedge.db")
+    gate = threading.Event()
+    wedge = asyncio.ensure_future(conn._execute(gate.wait))
+    helper = None
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        await asyncio.sleep(0.05)
+        with patch(_CAP, 0.2):
+            start = time.monotonic()
+            helper = asyncio.ensure_future(_safe_close("Shutdown", "database", conn.close))
+            await asyncio.wait({helper}, timeout=3.0)
+            elapsed = time.monotonic() - start
+        helper_done = helper.done()
+        result = helper.result() if helper_done and not helper.cancelled() else None
+        warnings = [line for line in _sink_lines(sink) if line.startswith("WARNING | ")]
+        thread_alive_wedged = conn._thread.is_alive()
+        abandoned = list(_ABANDONED_CLOSE_TASKS)
+        gate.set()
+        await asyncio.wait({wedge}, timeout=3.0)
+        if abandoned:
+            await asyncio.wait(abandoned, timeout=3.0)
+        await asyncio.to_thread(conn._thread.join, 2.0)
+        thread_alive_after = conn._thread.is_alive()
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        gate.set()
+        await asyncio.wait({wedge}, timeout=3.0)
+        pending = [t for t in _ABANDONED_CLOSE_TASKS if not t.done()]
+        if pending:
+            await asyncio.wait(pending, timeout=3.0)
+        if conn._thread.is_alive():
+            closer = asyncio.ensure_future(aiosqlite.Connection.close(conn))
+            await asyncio.wait({closer}, timeout=3.0)
+            await asyncio.to_thread(conn._thread.join, 2.0)
+        logger.remove(sink_id)
+    assert helper_done
+    assert result is False
+    assert elapsed < 1.5
+    assert len(warnings) == 1 and "database" in warnings[0]
+    assert thread_alive_wedged is True
+    assert thread_alive_after is False
+    assert remaining == 0
+
+
+def test_safe_stop_scheduler_logs_warning_when_shutdown_raises():
+    from triggarr.search.scheduler import _safe_stop_scheduler
+
+    class _Boom(_FakeScheduler):
+        def shutdown(self, wait: bool = True) -> None:
+            raise RuntimeError("scheduler boom")
+
+    ok = _FakeScheduler()
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = _safe_stop_scheduler("Shutdown", _Boom())
+        ok_result = _safe_stop_scheduler("Shutdown", ok)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    assert _sink_lines(sink) == ["WARNING | Shutdown: could not stop the scheduler (RuntimeError); continuing"]
+    assert ok_result is True
+    assert ok.shutdown_wait is False
