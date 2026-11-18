@@ -3380,3 +3380,91 @@ async def test_startup_cleanup_cancelled_midway_still_closes_remaining_steps_dat
     ]
     assert not any("simulated scheduler start failure" in line for line in obs.lines)
     assert obs.rescue_errors == []
+
+
+# ---------------------------------------------------------------------------
+# Shutdown cancelled partway (Phase 89 review WR-02)
+# ---------------------------------------------------------------------------
+
+
+def _recording_close(order: list[str], name: str, real_close, on_close=None):
+    async def close():
+        order.append(name)
+        await real_close()
+        if on_close is not None:
+            on_close()
+            await asyncio.sleep(0)
+
+    return close
+
+
+class _CancelOwnerOnAcquireLock:
+    """Stands in for the search lock at shutdown: the drain's acquire cancels the
+    lifespan's own task, then waits on the real (held) lock, as an outer timeout
+    or a harness tearing the app down mid-drain would."""
+
+    def __init__(self, held: asyncio.Lock, owner: asyncio.Task) -> None:
+        self._held = held
+        self._owner = owner
+
+    async def acquire(self) -> bool:
+        self._owner.cancel()
+        return await self._held.acquire()
+
+    def release(self) -> None:
+        self._held.release()
+
+
+async def test_shutdown_cancelled_during_drain_still_closes_clients_and_database(tmp_path):
+    order: list[str] = []
+    tracked: list = []
+
+    async def body(app):
+        clients = _track_all_clients(app, tracked)
+        for app_type, client in clients.items():
+            client.close = _recording_close(order, app_type, client.close)
+        app.state.db.close = _recording_close(order, "db", app.state.db.close)
+        # A search cycle holds the lock, so the shutdown drain has to wait on it.
+        held = app.state.search_lock
+        await held.acquire()
+        app.state.search_lock = _CancelOwnerOnAcquireLock(held, asyncio.current_task())
+
+    obs = await _observe_lifespan(make_settings(), tmp_path, _FakeScheduler(), body=body, tracked=tracked)
+    assert obs.exit_timed_out is False
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    assert order == ["radarr", "sonarr", "lidarr", "db"]
+    assert obs.clients_closed == [True, True, True]
+    assert obs.worker_alive == [False]
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
+    assert warnings == ["WARNING | Shutdown: drain interrupted by cancellation; closing anyway"]
+    assert obs.lines[-1] == "INFO | Search engine stopped"
+    assert not any(line.startswith("ERROR | ") for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_shutdown_cancelled_during_client_close_still_closes_remaining_steps_database_last(tmp_path):
+    order: list[str] = []
+    tracked: list = []
+
+    async def body(app):
+        owner = asyncio.current_task()
+        clients = _track_all_clients(app, tracked)
+        for app_type, client in clients.items():
+            # The lifespan is cancelled while shutdown waits on the first client close.
+            on_close = owner.cancel if app_type == "radarr" else None
+            client.close = _recording_close(order, app_type, client.close, on_close=on_close)
+        app.state.db.close = _recording_close(order, "db", app.state.db.close)
+
+    obs = await _observe_lifespan(make_settings(), tmp_path, _FakeScheduler(), body=body, tracked=tracked)
+    assert obs.exit_timed_out is False
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    assert order == ["radarr", "sonarr", "lidarr", "db"]
+    assert obs.clients_closed == [True, True, True]
+    assert obs.worker_alive == [False]
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
+    assert warnings == [
+        "WARNING | Shutdown: closing Radarr/'Default' connection was interrupted by cancellation; continuing"
+    ]
+    assert obs.lines[-1] == "INFO | Search engine stopped"
+    assert not any(line.startswith("ERROR | ") for line in obs.lines)
+    assert obs.rescue_errors == []

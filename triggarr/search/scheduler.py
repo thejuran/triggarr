@@ -626,7 +626,7 @@ async def _close_through_cancellation(
     """Run one ``_safe_close`` step; if the caller is cancelled meanwhile, hand the cancellation back.
 
     Returns ``(closed, cancellation)``. A cancellation is returned rather than
-    raised so failed-startup cleanup can still attempt every remaining step
+    raised so failed-startup cleanup and shutdown can still attempt every remaining step
     (the database last, which is what lets the process exit); the caller must
     re-raise it once cleanup is done.
     """
@@ -960,12 +960,23 @@ def create_lifespan(
             # not have this race: the acquire() runs in the caller's
             # frame, so a cancel propagates as CancelledError before any
             # state is committed.
+            #
+            # WR-02: a cancellation that arrives during the drain or any close
+            # below is held, not allowed to skip the remaining steps (an open
+            # database keeps its non-daemon worker thread alive and the process
+            # from exiting); it is re-raised once every step has run.
+            shutdown_cancel: asyncio.CancelledError | None = None
             acquired = False
             try:
                 try:
                     async with asyncio.timeout(drain):
                         await app.state.search_lock.acquire()
                         acquired = True
+                except asyncio.CancelledError as cancel:
+                    # The lock-holding search cycle may still be mid-write;
+                    # closing anyway is preferred over leaving the process hung.
+                    shutdown_cancel = cancel
+                    logger.warning("Shutdown: drain interrupted by cancellation; closing anyway")
                 except TimeoutError:
                     # Re-read holder defensively: a race could have cleared
                     # it if the cycle finished but a different caller
@@ -997,14 +1008,22 @@ def create_lifespan(
 
             # 3. Close HTTP clients (all instances). Each close is isolated and
             # capped via _safe_close (LIFE-02): one failing or hung close never
-            # stops the remaining clients or the database from closing.
+            # stops the remaining clients or the database from closing, and a
+            # cancellation meanwhile is held until the database is closed (WR-02).
             for app_type in APP_TYPES:
                 for inst_name, client in getattr(app.state, f"{app_type}_clients", {}).items():
-                    await _safe_close("Shutdown", f"{app_type.title()}/{inst_name!r} connection", client.close)
+                    _, cancel = await _close_through_cancellation(
+                        "Shutdown", f"{app_type.title()}/{inst_name!r} connection", client.close
+                    )
+                    shutdown_cancel = shutdown_cancel or cancel
 
             # 4. Close shared database connection (all writes complete per step 2)
-            await _safe_close("Shutdown", "database", app.state.db.close)
+            _, cancel = await _close_through_cancellation("Shutdown", "database", app.state.db.close)
+            shutdown_cancel = shutdown_cancel or cancel
 
             logger.info("Search engine stopped")
+            # Never swallow a cancellation: re-raise it once every step has run.
+            if shutdown_cancel is not None:
+                raise shutdown_cancel
 
     return lifespan
