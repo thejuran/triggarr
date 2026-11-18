@@ -2932,3 +2932,207 @@ async def test_shutdown_order_is_unchanged(tmp_path):
     assert obs.exc is None
     assert order == ["scheduler", "radarr", "sonarr", "lidarr", "db"]
     assert obs.rescue_errors == []
+
+
+# ---------------------------------------------------------------------------
+# Failed startup: release everything opened so far (LIFE-01, LIFE-03)
+# ---------------------------------------------------------------------------
+
+_CAUSE = "ERROR | Startup failed (RuntimeError); closing what was opened"
+
+
+def _summary(text: str) -> str:
+    return f"ERROR | Startup failed; closed {text} before exiting"
+
+
+def _recording_factory(cls, record: list, fail_on_call: int | None = None, after_build=None):
+    """Build a client constructor stand-in that records instances and can fail on the Nth call."""
+    calls = [0]
+
+    def factory(**kwargs):
+        calls[0] += 1
+        if fail_on_call is not None and calls[0] == fail_on_call:
+            raise RuntimeError("simulated client construction failure")
+        instance = cls(**kwargs)
+        if after_build is not None:
+            after_build(instance)
+        record.append(instance)
+        return instance
+
+    return factory
+
+
+class _FailingStartScheduler(_FakeScheduler):
+    """start() fails before the scheduler ever reaches the running state."""
+
+    def start(self) -> None:
+        raise RuntimeError("simulated scheduler start failure")
+
+
+def _failed_startup_lines(obs: _LifespanObservation) -> list[str]:
+    assert _CAUSE in obs.lines, obs.lines
+    return obs.lines[obs.lines.index(_CAUSE):]
+
+
+def _common_failed_startup_asserts(obs: _LifespanObservation) -> None:
+    assert obs.reached_yield is False
+    assert obs.exit_timed_out is False
+
+
+async def test_startup_failure_init_db_closes_database_and_reraises(tmp_path):
+    injected = RuntimeError("simulated upgrade failure")
+    fake = _FakeScheduler()
+    with patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=injected)):
+        obs = await _observe_lifespan(make_settings(), tmp_path, fake, log_level="WARNING")
+    assert obs.exc is injected
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 0 connection(s)")]
+    assert not any("simulated upgrade failure" in line for line in obs.lines)
+    assert fake.started is False
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cutover_closes_database(tmp_path):
+    tracked: list = []
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with (
+        patch(
+            "triggarr.search.scheduler.ensure_cutover_recorded",
+            new=AsyncMock(side_effect=RuntimeError("simulated cutover failure")),
+        ),
+        patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated cutover failure"
+    _common_failed_startup_asserts(obs)
+    assert tracked == []
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 0 connection(s)")]
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_client_construction_closes_earlier_clients(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    tracked: list = []
+    settings = Settings(
+        radarr={"Default": InstanceConfig(url="http://radarr:7878", api_key="radarr-test-key", enabled=True)},
+        sonarr={
+            "First": InstanceConfig(url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True),
+            "Second": InstanceConfig(url="http://sonarr2:8989", api_key="sonarr-test-key-2", enabled=True),
+        },
+    )
+    with (
+        patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)),
+        patch(
+            "triggarr.search.scheduler.SonarrClient",
+            side_effect=_recording_factory(SonarrClient, tracked, fail_on_call=2),
+        ),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated client construction failure"
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True, True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 2 connection(s)")]
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_scheduler_not_started_no_shutdown_call(tmp_path):
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.schedulers.base import STATE_STOPPED
+
+    real = AsyncIOScheduler()
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+    injected = RuntimeError("simulated upgrade failure")
+    with patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=injected)):
+        obs = await _observe_lifespan(settings, tmp_path, real, log_level="WARNING")
+    assert obs.exc is injected
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    assert obs.scheduler_running is False
+    assert real.state == STATE_STOPPED
+    assert not any("SchedulerNotRunningError" in line for line in obs.lines)
+    assert not any(line.startswith("WARNING | Startup") for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cleanup_also_fails_still_raises_original(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    tracked: list = []
+    fake = _FailingStartScheduler()
+    settings = make_settings(lidarr_enabled=False)
+    with (
+        patch(
+            "triggarr.search.scheduler.RadarrClient",
+            side_effect=_recording_factory(
+                RadarrClient,
+                tracked,
+                after_build=lambda c: setattr(c, "close", AsyncMock(side_effect=AssertionError("close boom"))),
+            ),
+        ),
+        patch("triggarr.search.scheduler.SonarrClient", side_effect=_recording_factory(SonarrClient, tracked)),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, fake, tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated scheduler start failure"
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [False, True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [
+        _CAUSE,
+        "WARNING | Startup cleanup: could not close Radarr/'Default' connection (AssertionError); continuing",
+        _summary("the database and 1 connection(s)"),
+    ]
+    assert not any("close boom" in line or "simulated scheduler start failure" in line for line in obs.lines)
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cleanup_also_fails_on_db_close(tmp_path):
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+    with patch(
+        "triggarr.search.scheduler.ensure_cutover_recorded",
+        new=AsyncMock(side_effect=RuntimeError("simulated cutover failure")),
+    ):
+        obs = await _observe_lifespan(
+            settings,
+            tmp_path,
+            _FakeScheduler(),
+            connect_hook=lambda conn: setattr(conn, "close", AsyncMock(side_effect=OSError(5, "Input/output error"))),
+            log_level="WARNING",
+        )
+    assert type(obs.exc) is RuntimeError
+    _common_failed_startup_asserts(obs)
+    assert _CAUSE in obs.lines
+    assert _failed_startup_lines(obs) == [
+        _CAUSE,
+        "WARNING | Startup cleanup: could not close database (OSError); continuing",
+        _summary("0 connection(s)"),
+    ]
+    assert not any("Input/output error" in line for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cause_line_never_logs_credentials(tmp_path):
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+    leaking = httpx.ConnectError(
+        "boom", request=httpx.Request("GET", "http://sonarr:8989/api?apikey=SECRET-KEY-123")
+    )
+    with patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=leaking)):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), log_level="WARNING")
+    assert obs.exc is leaking
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    cause = "ERROR | Startup failed (HTTP error: ConnectError); closing what was opened"
+    assert cause in obs.lines
+    assert obs.lines[obs.lines.index(cause):] == [cause, _summary("the database and 0 connection(s)")]
+    assert not any("SECRET-KEY-123" in line or "apikey" in line for line in obs.lines)
+    assert obs.rescue_errors == []
