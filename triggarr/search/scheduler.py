@@ -810,7 +810,7 @@ def create_lifespan(
             yield
         finally:
             # 1. Stop scheduler from scheduling new jobs (does NOT wait for async jobs)
-            scheduler.shutdown(wait=False)
+            _safe_stop_scheduler("Shutdown", scheduler)
 
             # 2. Drain any in-flight search cycle before closing resources (DEBT-06)
             # DEBT-06 (D-05): resolve drain timeout from config at shutdown time
@@ -884,13 +884,15 @@ def create_lifespan(
                 if acquired:
                     app.state.search_lock.release()
 
-            # 3. Close HTTP clients (all instances)
+            # 3. Close HTTP clients (all instances). Each close is isolated and
+            # capped via _safe_close (LIFE-02): one failing or hung close never
+            # stops the remaining clients or the database from closing.
             for app_type in APP_TYPES:
-                for client in getattr(app.state, f"{app_type}_clients", {}).values():
-                    await client.close()
+                for inst_name, client in getattr(app.state, f"{app_type}_clients", {}).items():
+                    await _safe_close("Shutdown", f"{app_type.title()}/{inst_name!r} connection", client.close)
 
             # 4. Close shared database connection (all writes complete per step 2)
-            await app.state.db.close()
+            await _safe_close("Shutdown", "database", app.state.db.close)
 
             logger.info("Search engine stopped")
 

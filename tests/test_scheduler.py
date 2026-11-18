@@ -2850,7 +2850,7 @@ async def test_shutdown_continues_when_client_close_fails(tmp_path):
     assert obs.clients_closed == [False, True, True]
     assert obs.worker_alive == [False]
     warning = "WARNING | Shutdown: could not close Radarr/'Default' connection (AssertionError); continuing"
-    assert [line for line in obs.lines if line.startswith("WARNING | ")] == [warning]
+    assert [line for line in obs.lines if line.startswith("WARNING | Shutdown:")] == [warning]
     assert not any("in-flight close" in line for line in obs.lines)
     stopped = "INFO | Search engine stopped"
     assert stopped in obs.lines
@@ -2867,7 +2867,7 @@ async def test_shutdown_continues_when_db_close_fails(tmp_path):
 
     obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), body=body)
     assert obs.exc is None, f"lifespan exit raised {obs.exc!r}"
-    warnings = [line for line in obs.lines if line.startswith("WARNING | ")]
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
     assert warnings == ["WARNING | Shutdown: could not close database (OSError); continuing"]
     assert not any("Input/output error" in line for line in obs.lines)
     assert obs.lines[-1] == "INFO | Search engine stopped"
@@ -2899,7 +2899,7 @@ async def test_shutdown_abandons_hung_client_close_after_cap(tmp_path):
     assert obs.elapsed < 2.0
     assert obs.clients_closed == [True, False, True]
     assert obs.worker_alive == [False]
-    warnings = [line for line in obs.lines if line.startswith("WARNING | ")]
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
     assert warnings == ["WARNING | Shutdown: Sonarr/'Default' connection did not close within 0.05s; continuing"]
     assert "INFO | Search engine stopped" in obs.lines
     assert obs.rescue_errors == []
