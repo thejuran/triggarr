@@ -3244,3 +3244,139 @@ async def test_stop_scheduler_if_running_reports_a_scheduler_that_stays_running(
         assert _sink_lines(sink) == []
     finally:
         logger.remove(sink_id)
+
+
+# ---------------------------------------------------------------------------
+# Failed startup by cancellation or interrupt (Phase 89 review WR-01)
+# ---------------------------------------------------------------------------
+
+
+class _StartupInterrupt(BaseException):
+    """A non-Exception interrupt that, unlike KeyboardInterrupt/SystemExit, asyncio
+    stores on the task instead of re-raising out of the event loop."""
+
+
+async def test_startup_cancelled_during_init_db_still_closes_database(tmp_path):
+    async def cancelled_init_db(*args, **kwargs):
+        # Cancel the lifespan's own task while it awaits this upgrade step, as an
+        # outer timeout or a harness tearing the app down would.
+        asyncio.current_task().cancel()
+        await asyncio.sleep(10)
+
+    fake = _FakeScheduler()
+    with patch("triggarr.search.scheduler.init_db", new=cancelled_init_db):
+        obs = await _observe_lifespan(make_settings(), tmp_path, fake, log_level="WARNING")
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    cause = "ERROR | Startup interrupted (CancelledError); closing what was opened"
+    assert cause in obs.lines, obs.lines
+    assert obs.lines[obs.lines.index(cause):] == [
+        cause,
+        "ERROR | Startup interrupted; closed the database and 0 connection(s) before exiting",
+    ]
+    assert fake.started is False
+    assert obs.rescue_errors == []
+
+
+async def test_startup_interrupt_during_client_construction_closes_earlier_clients(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    tracked: list = []
+    calls = [0]
+
+    def interrupting_sonarr(**kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise _StartupInterrupt()
+        instance = SonarrClient(**kwargs)
+        tracked.append(instance)
+        return instance
+
+    settings = Settings(
+        radarr={"Default": InstanceConfig(url="http://radarr:7878", api_key="radarr-test-key", enabled=True)},
+        sonarr={
+            "First": InstanceConfig(url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True),
+            "Second": InstanceConfig(url="http://sonarr2:8989", api_key="sonarr-test-key-2", enabled=True),
+        },
+    )
+    with (
+        patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)),
+        patch("triggarr.search.scheduler.SonarrClient", side_effect=interrupting_sonarr),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is _StartupInterrupt
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True, True]
+    assert obs.worker_alive == [False]
+    cause = "ERROR | Startup interrupted (_StartupInterrupt); closing what was opened"
+    assert cause in obs.lines, obs.lines
+    assert obs.lines[obs.lines.index(cause):] == [
+        cause,
+        "ERROR | Startup interrupted; closed the database and 2 connection(s) before exiting",
+    ]
+    assert obs.rescue_errors == []
+
+
+async def test_startup_cleanup_cancelled_midway_still_closes_remaining_steps_database_last(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    owner: list[asyncio.Task] = []
+    order: list[str] = []
+
+    class _OwnerRecordingFailingStart(_FailingStartScheduler):
+        def start(self) -> None:
+            owner.append(asyncio.current_task())
+            super().start()
+
+    def recording(name: str, real_close, cancel_owner: bool = False):
+        async def close():
+            order.append(name)
+            await real_close()
+            if cancel_owner:
+                # A cancellation of the lifespan arrives while cleanup is
+                # waiting on this close.
+                owner[0].cancel()
+                await asyncio.sleep(0)
+
+        return close
+
+    tracked: list = []
+    settings = make_settings(lidarr_enabled=False)
+    with (
+        patch(
+            "triggarr.search.scheduler.RadarrClient",
+            side_effect=_recording_factory(
+                RadarrClient, tracked, after_build=lambda c: setattr(c, "close", recording("radarr", c.close))
+            ),
+        ),
+        patch(
+            "triggarr.search.scheduler.SonarrClient",
+            side_effect=_recording_factory(
+                SonarrClient,
+                tracked,
+                after_build=lambda c: setattr(c, "close", recording("sonarr", c.close, cancel_owner=True)),
+            ),
+        ),
+    ):
+        obs = await _observe_lifespan(
+            settings,
+            tmp_path,
+            _OwnerRecordingFailingStart(),
+            tracked=tracked,
+            connect_hook=lambda conn: setattr(conn, "close", recording("db", conn.close)),
+            log_level="WARNING",
+        )
+    # Cleanup closes clients newest first, then the database.
+    assert order == ["sonarr", "radarr", "db"]
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True, True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [
+        _CAUSE,
+        "WARNING | Startup cleanup: closing Sonarr/'Default' connection was interrupted by cancellation; continuing",
+        _summary("the database and 1 connection(s)"),
+    ]
+    assert not any("simulated scheduler start failure" in line for line in obs.lines)
+    assert obs.rescue_errors == []

@@ -620,6 +620,27 @@ async def _stop_scheduler_if_running(context: str, scheduler) -> bool:
     return True
 
 
+async def _close_through_cancellation(
+    context: str, label: str, close_fn: Callable[[], Awaitable[None]]
+) -> tuple[bool, asyncio.CancelledError | None]:
+    """Run one ``_safe_close`` step; if the caller is cancelled meanwhile, hand the cancellation back.
+
+    Returns ``(closed, cancellation)``. A cancellation is returned rather than
+    raised so failed-startup cleanup can still attempt every remaining step
+    (the database last, which is what lets the process exit); the caller must
+    re-raise it once cleanup is done.
+    """
+    try:
+        return await _safe_close(context, label, close_fn), None
+    except asyncio.CancelledError as cancel:
+        logger.warning(
+            "{context}: closing {label} was interrupted by cancellation; continuing",
+            context=context,
+            label=label,
+        )
+        return False, cancel
+
+
 def _describe_closed(parts: list[str]) -> str:
     """Join closed-resource descriptions as "a, b and c"."""
     if len(parts) <= 1:
@@ -842,25 +863,58 @@ def create_lifespan(
                 id="update_check",
                 next_run_time=datetime.now(UTC),
             )
-        except Exception as startup_exc:
+        except BaseException as startup_exc:
+            # BaseException, not Exception: a startup cancelled or interrupted
+            # mid-step (CancelledError, KeyboardInterrupt, SystemExit) must still
+            # close the database, whose non-daemon worker thread otherwise keeps
+            # the process from exiting (WR-01). The unchanged exception is re-raised below.
             # The cause is reported first; sanitized because a startup error can
-            # carry a URL with credentials. The unchanged exception is re-raised below.
-            logger.error("Startup failed ({exc}); closing what was opened", exc=_sanitize_exc(startup_exc))
+            # carry a URL with credentials. A non-Exception is reported by type only.
+            if isinstance(startup_exc, Exception):
+                outcome = "failed"
+                logger.error("Startup failed ({exc}); closing what was opened", exc=_sanitize_exc(startup_exc))
+            else:
+                outcome = "interrupted"
+                logger.error(
+                    "Startup interrupted ({exc}); closing what was opened", exc=type(startup_exc).__name__
+                )
+
+            # A cancellation that arrives during cleanup is held, not allowed to
+            # stop the remaining steps; it is re-raised once every step has run.
+            cleanup_cancel: asyncio.CancelledError | None = None
 
             # Stop the scheduler first so no job runs against clients about to close.
-            scheduler_stopped = await _stop_scheduler_if_running("Startup cleanup", scheduler)
+            try:
+                scheduler_stopped = await _stop_scheduler_if_running("Startup cleanup", scheduler)
+            except asyncio.CancelledError as cancel:
+                scheduler_stopped = False
+                cleanup_cancel = cancel
 
             connections_closed = 0
             for app_type, inst_name, client in reversed(created_clients):
-                if await _safe_close("Startup cleanup", f"{app_type.title()}/{inst_name!r} connection", client.close):
+                closed, cancel = await _close_through_cancellation(
+                    "Startup cleanup", f"{app_type.title()}/{inst_name!r} connection", client.close
+                )
+                if closed:
                     connections_closed += 1
-            db_closed = db is not None and await _safe_close("Startup cleanup", "database", db.close)
+                cleanup_cancel = cleanup_cancel or cancel
+            db_closed = False
+            if db is not None:
+                db_closed, cancel = await _close_through_cancellation("Startup cleanup", "database", db.close)
+                cleanup_cancel = cleanup_cancel or cancel
 
             parts = ["the scheduler"] if scheduler_stopped else []
             if db_closed:
                 parts.append("the database")
             parts.append(f"{connections_closed} connection(s)")
-            logger.error("Startup failed; closed {closed} before exiting", closed=_describe_closed(parts))
+            logger.error(
+                "Startup {outcome}; closed {closed} before exiting", outcome=outcome, closed=_describe_closed(parts)
+            )
+            # A cancellation during cleanup must not be swallowed. It takes over from
+            # an ordinary startup error (chained as its cause); an
+            # original cancellation or interrupt is re-raised unchanged.
+            if cleanup_cancel is not None and isinstance(startup_exc, Exception):
+                raise cleanup_cancel from startup_exc
             raise
 
         try:
