@@ -597,6 +597,29 @@ def _safe_stop_scheduler(context: str, scheduler) -> bool:
     return True
 
 
+async def _stop_scheduler_if_running(context: str, scheduler) -> bool:
+    """Stop the scheduler only if it is actually running; report whether it is observed stopped.
+
+    Never raises. The state is read from the scheduler rather than from a flag
+    set after ``start()`` returns: ``BaseScheduler.start()`` sets its running
+    state before logging, dispatching its start event and waking up
+    (``base.py:213-218``), so a ``start()`` that raises can leave it running.
+    A scheduler that is not running is never shut down, which would raise
+    ``SchedulerNotRunningError``.
+    """
+    if not scheduler.running:
+        return False
+    if not _safe_stop_scheduler(context, scheduler):
+        return False
+    # AsyncIOScheduler.shutdown only queues the real shutdown on the event loop;
+    # one loop iteration lets it take effect before the state is re-read.
+    await asyncio.sleep(0)
+    if scheduler.running:
+        logger.warning("{context}: the scheduler did not stop; continuing", context=context)
+        return False
+    return True
+
+
 def _describe_closed(parts: list[str]) -> str:
     """Join closed-resource descriptions as "a, b and c"."""
     if len(parts) <= 1:
@@ -824,13 +847,18 @@ def create_lifespan(
             # carry a URL with credentials. The unchanged exception is re-raised below.
             logger.error("Startup failed ({exc}); closing what was opened", exc=_sanitize_exc(startup_exc))
 
+            # Stop the scheduler first so no job runs against clients about to close.
+            scheduler_stopped = await _stop_scheduler_if_running("Startup cleanup", scheduler)
+
             connections_closed = 0
             for app_type, inst_name, client in reversed(created_clients):
                 if await _safe_close("Startup cleanup", f"{app_type.title()}/{inst_name!r} connection", client.close):
                     connections_closed += 1
             db_closed = db is not None and await _safe_close("Startup cleanup", "database", db.close)
 
-            parts = ["the database"] if db_closed else []
+            parts = ["the scheduler"] if scheduler_stopped else []
+            if db_closed:
+                parts.append("the database")
             parts.append(f"{connections_closed} connection(s)")
             logger.error("Startup failed; closed {closed} before exiting", closed=_describe_closed(parts))
             raise
