@@ -22,6 +22,7 @@ Phase 65 hardening layered on top of the original wiring:
 from __future__ import annotations
 
 import asyncio
+import functools
 import math
 import os
 import time
@@ -111,6 +112,13 @@ _SHUTDOWN_DRAIN_TIMEOUT: float = _read_shutdown_drain_timeout()
 # module-constant pattern; unlike the drain timeout this is NOT operator-
 # configurable (no env-override) — the TTL is an internal performance knob.
 _TAG_CACHE_TTL_SECONDS: float = 3600.0
+
+# Per-step cap (seconds) on how long cleanup waits for one resource close during
+# shutdown and failed-startup cleanup. Hardcoded: NOT operator-configurable, no
+# env override. The cap bounds how long cleanup waits for a step; it cannot
+# interrupt an OS thread blocked inside sqlite3, and a close still blocked at
+# process exit can still delay that exit because no forced exit is added.
+_CLEANUP_STEP_TIMEOUT: float = 5.0
 
 
 def _cached_tags_cover_config(cached_tags: list[Tag], instance_config: InstanceConfig) -> bool:
@@ -455,6 +463,138 @@ def _on_job_error(event) -> None:
         type=type(exc).__name__,
         exc=exc_repr,
     )
+
+
+# Strong references to close tasks that outlived the cap, so the event loop's
+# weak reference cannot let them be garbage-collected while pending. Emptied by
+# the done-callback attached when a task is abandoned.
+_ABANDONED_CLOSE_TASKS: set[asyncio.Task] = set()
+
+
+def _observe_abandoned_close(context: str, label: str, task: asyncio.Task) -> None:
+    """Done-callback for an abandoned close task: release it and log its outcome.
+
+    Logged at DEBUG: the step was already reported once at WARNING when the cap
+    fired. Retrieving the exception here also prevents asyncio's "Task exception
+    was never retrieved" report. Never logs ``str(exc)``.
+    """
+    _ABANDONED_CLOSE_TASKS.discard(task)
+    if task.cancelled():
+        outcome = "cancelled"
+    else:
+        exc = task.exception()
+        if exc is None:
+            outcome = "finished"
+        elif isinstance(exc, Exception):
+            outcome = _sanitize_exc(exc)
+        else:
+            outcome = type(exc).__name__
+    logger.debug(
+        "{context}: abandoned close of {label} ended after the cap ({outcome})",
+        context=context,
+        label=label,
+        outcome=outcome,
+    )
+
+
+def _retrieve_close_result(task: asyncio.Task) -> None:
+    """Done-callback attached to every close task: retrieve its result, log nothing.
+
+    Retrieving the exception guarantees asyncio never reports "Task exception was
+    never retrieved" (with the raw exception text, which can carry a URL with
+    credentials) for a close task, whichever way ``_safe_close`` exits. Retrieval
+    is idempotent, so later ``task.exception()`` calls are unaffected.
+    """
+    if task.cancelled():
+        return
+    task.exception()
+
+
+async def _safe_close(context: str, label: str, close_fn: Callable[[], Awaitable[None]]) -> bool:
+    """Attempt one cleanup step, wait at most ``_CLEANUP_STEP_TIMEOUT`` seconds, never raise.
+
+    Returns whether the step completed. The close runs in a task this helper
+    owns and only this helper's wait is bounded: awaiting the close directly
+    inside ``asyncio.timeout`` would not return at the cap, because
+    ``aiosqlite.Connection.close()`` awaits again in its own ``finally`` after
+    being cancelled and so may never finish while its worker thread is blocked.
+    """
+    try:
+        task = asyncio.ensure_future(close_fn())
+    except Exception as exc:
+        logger.warning(
+            "{context}: could not close {label} ({exc}); continuing",
+            context=context,
+            label=label,
+            exc=_sanitize_exc(exc) if isinstance(exc, Exception) else type(exc).__name__,
+        )
+        return False
+    task.add_done_callback(_retrieve_close_result)
+    done: set[asyncio.Future] = set()
+    try:
+        done, _ = await asyncio.wait({task}, timeout=_CLEANUP_STEP_TIMEOUT)
+    except asyncio.CancelledError:
+        if task.done() and not task.cancelled():
+            failure = task.exception()
+            if failure is not None:
+                logger.warning(
+                    "{context}: could not close {label} ({exc}); continuing",
+                    context=context,
+                    label=label,
+                    exc=_sanitize_exc(failure) if isinstance(failure, Exception) else type(failure).__name__,
+                )
+        raise
+    finally:
+        if not task.done():
+            _ABANDONED_CLOSE_TASKS.add(task)
+            task.add_done_callback(functools.partial(_observe_abandoned_close, context, label))
+            task.cancel()
+    if task not in done:
+        logger.warning(
+            "{context}: {label} did not close within {t}s; continuing",
+            context=context,
+            label=label,
+            t=_CLEANUP_STEP_TIMEOUT,
+        )
+        return False
+    if task.cancelled():
+        logger.warning(
+            "{context}: could not close {label} ({exc}); continuing",
+            context=context,
+            label=label,
+            exc="cancelled",
+        )
+        return False
+    exc = task.exception()
+    if exc is None:
+        return True
+    logger.warning(
+        "{context}: could not close {label} ({exc}); continuing",
+        context=context,
+        label=label,
+        exc=_sanitize_exc(exc) if isinstance(exc, Exception) else type(exc).__name__,
+    )
+    return False
+
+
+def _safe_stop_scheduler(context: str, scheduler) -> bool:
+    """Request a scheduler stop; log and continue on failure, never raise.
+
+    Synchronous because ``BaseScheduler.shutdown`` is a sync call. For a real
+    ``AsyncIOScheduler`` a True return means the stop was requested: its
+    shutdown queues the state change on the event loop, which takes effect on
+    the next loop iteration.
+    """
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception as exc:
+        logger.warning(
+            "{context}: could not stop the scheduler ({exc}); continuing",
+            context=context,
+            exc=_sanitize_exc(exc),
+        )
+        return False
+    return True
 
 
 def create_lifespan(
