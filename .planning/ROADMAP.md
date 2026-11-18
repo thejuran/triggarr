@@ -290,7 +290,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 **Plans**: 2 plans in 2 waves
 
 **Wave 1**
-- [ ] 89-01-PLAN.md â€” shared non-raising, 5s-capped close helpers; at shutdown one client's failed or hung close never stops the remaining clients or the database from closing, logged as one sanitized warning (LIFE-02)
+- [x] 89-01-PLAN.md â€” shared non-raising, 5s-capped close helpers; at shutdown one client's failed or hung close never stops the remaining clients or the database from closing, logged as one sanitized warning (LIFE-02)
 
 **Wave 2** *(blocked on Wave 1: 89-01; same files)*
 - [ ] 89-02-PLAN.md â€” a startup that fails after the database opens closes the database and every client built so far, stops the scheduler only if it was started, logs one summary line and re-raises the original error; the aiosqlite worker thread is proven stopped (LIFE-01, LIFE-03)
@@ -350,7 +350,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 | 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
 | 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Complete (merged PR #63) | 2026-11-17 |
-| 89. Startup & Shutdown Resource Cleanup | 0/2 | Planned | - |
+| 89. Startup & Shutdown Resource Cleanup | 1/2 | In progress (89-01 done) | - |
 | 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |
 | 92. Built-Image Recovery Demonstration | TBD | Not started | - |

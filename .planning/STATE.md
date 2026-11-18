@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "ready to execute -- Phase 89 planned (2 plans in 2 waves, plan check passed on iteration 3); next: /bm:execute-phase 89. Phase 88 landed on main via PR #63 (b4a25aa1)"
-stopped_at: "Phase 89 planned (89-01, 89-02); next: /bm:execute-phase 89"
-last_updated: "2026-11-18T22:53:31.000Z"
-last_activity: "2026-11-18 -- Phase 89 planned: research, pattern map, 2 plans, plan check passed"
+status: executing
+stopped_at: "Completed 89-01-PLAN.md (shutdown close isolation, LIFE-02); next: 89-02"
+last_updated: "2026-11-18T23:00:55.194Z"
+last_activity: 2026-11-18 -- Phase 89 plan 01 executed (LIFE-02)
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 33
 ---
 
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.14 Reliability, Phase 89 next (Phases 87 and 88 landed on main via PRs #62 and #63). v2.12.1 is published and running in production.
+**Current focus:** Phase 89: startup-shutdown-resource-cleanup
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 89 (Startup & Shutdown Resource Cleanup) — PLANNED, execution not started
-Plan: 0 of 2 executed (89-01 wave 1: shutdown close isolation, LIFE-02; 89-02 wave 2: failed-startup cleanup, LIFE-01/LIFE-03)
-Status: ready to execute -- Phase 89 planned 2026-11-18 (plan check passed on iteration 3 after 2 revision rounds); next: /bm:execute-phase 89
-Last activity: 2026-11-18 — Phase 89 planned: 89-RESEARCH.md, 89-PATTERNS.md, 89-VALIDATION.md, 89-01-PLAN.md, 89-02-PLAN.md
+Phase: 89 (startup-shutdown-resource-cleanup) — EXECUTING
+Plan: 1 of 2 executed (89-01 done; 89-02 failed-startup cleanup next)
+Status: Executing Phase 89
+Last activity: 2026-11-18 -- Phase 89 plan 01 executed (LIFE-02)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -173,7 +173,7 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-18T15:00:00.000Z
+Last session: 2026-11-18T23:00:55.188Z
 Stopped at: Phase 89 context gathered
 Resume file: .planning/phases/89-startup-shutdown-resource-cleanup/89-CONTEXT.md
 
