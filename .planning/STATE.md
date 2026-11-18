@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "ready -- Phase 89 context gathered, planning not started; Phase 88 landed on main via PR #63 (b4a25aa1)"
-stopped_at: "Phase 89 context gathered (89-CONTEXT.md, 12 decisions); next: /bm:plan-phase 89"
-last_updated: "2026-11-18T15:30:00.000Z"
-last_activity: "2026-11-18 -- Phase 89 context gathered"
+status: "ready to execute -- Phase 89 planned (2 plans in 2 waves, plan check passed on iteration 3); next: /bm:execute-phase 89. Phase 88 landed on main via PR #63 (b4a25aa1)"
+stopped_at: "Phase 89 planned (89-01, 89-02); next: /bm:execute-phase 89"
+last_updated: "2026-11-18T22:53:31.000Z"
+last_activity: "2026-11-18 -- Phase 89 planned: research, pattern map, 2 plans, plan check passed"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 5
+  total_plans: 7
   completed_plans: 5
   percent: 33
 ---
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 89 (Startup & Shutdown Resource Cleanup) — CONTEXT GATHERED, planning not started
-Plan: 0 plans yet
-Status: ready for /bm:plan-phase 89 (context gathered 2026-11-18). Phase 88 landed on main 2026-11-17 as PR #63 (merge `b4a25aa1`; acceptance passed at head `39ccfabb`, run 44016507883 attempt 2; main CI, Push on main and Release runs green on `b4a25aa1`)
-Last activity: 2026-11-18 — Phase 88 close-out recorded; Phase 89 branch cut from main at `b4a25aa1`, carrying Phase 88's PR-head review, Codex and checkpoint records
+Phase: 89 (Startup & Shutdown Resource Cleanup) — PLANNED, execution not started
+Plan: 0 of 2 executed (89-01 wave 1: shutdown close isolation, LIFE-02; 89-02 wave 2: failed-startup cleanup, LIFE-01/LIFE-03)
+Status: ready to execute -- Phase 89 planned 2026-11-18 (plan check passed on iteration 3 after 2 revision rounds); next: /bm:execute-phase 89
+Last activity: 2026-11-18 — Phase 89 planned: 89-RESEARCH.md, 89-PATTERNS.md, 89-VALIDATION.md, 89-01-PLAN.md, 89-02-PLAN.md
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 

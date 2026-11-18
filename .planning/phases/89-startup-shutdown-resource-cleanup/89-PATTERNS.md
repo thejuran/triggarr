@@ -4,6 +4,16 @@
 **Files analyzed:** 2 (1 source, 1 test)
 **Analogs found:** 2 / 2 (both are the file itself — this phase modifies existing code in place, it does not add new files)
 
+## Plan-check corrections (2026-11-18)
+
+These take precedence over the older sketches further down; see the matching block at the top of 89-RESEARCH.md for evidence.
+
+- **`_safe_close` shape:** not `async with asyncio.timeout(...): await close_fn()`. aiosqlite's `Connection.close()` awaits again in its `finally:`, so a cancelled direct await may never return. Run the close in an owned task, wait with `asyncio.wait({task}, timeout=_CLEANUP_STEP_TIMEOUT)`, and cancel-once / keep-referenced / observe any task that outlives the cap. The existing shutdown drain keeps its `asyncio.timeout`. Signature: `_safe_close(context, label, close_fn)`.
+- **Scheduler guard:** no `scheduler_started` flag. Read `scheduler.running`; `BaseScheduler.start()` sets `STATE_RUNNING` before its logging, start event and `wakeup()`, so `start()` can raise with the scheduler running. `AsyncIOScheduler.shutdown()` only queues the stop; yield one loop iteration and re-read the state.
+- **TEST-04 rationale:** in TEST-04 `close()` returns cleanly and the `AssertionError` is on the in-flight request task (`tests/test_clients.py:190-203`). It is background for "failures near close are not httpx-typed", not proof that `close()` raises `AssertionError`. The broad catch stays (D-07).
+- **D-05:** a sanitized cause line is logged first, before cleanup; the summary line is last.
+- **Tests:** lifespan tests use the `_observe_lifespan` helper (drive, observe, rescue, then assert); no assertion inside a `finally:`.
+
 ## File Classification
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
@@ -338,7 +348,7 @@ assert not conn_thread.is_alive(), "aiosqlite worker thread did not stop after f
 ```
 Capturing the real `aiosqlite.Connection` instance for this assertion requires either (a) wrapping `aiosqlite.connect` to stash the connection in a test-local variable before the failure is injected later in setup, or (b) injecting the failure late enough (e.g. `ensure_cutover_recorded`, client construction, `scheduler.start()`) that `db` is already assigned to the local variable the new cleanup code tracks — the planner should pick the injection point per stage and capture `db` via a thin `patch("triggarr.search.scheduler.aiosqlite.connect", wraps=aiosqlite.connect)`-style spy if the earliest stage (`init_db` itself raising) needs this assertion too.
 
-**TEST-04 precedent for "the close failure can be a non-httpx `AssertionError`"** (`tests/test_clients.py:203`, `:330-387` — already in the repo, cited directly by D-07/Pitfall B):
+**TEST-04 background for "failures around an in-flight close are not httpx-typed"** (`tests/test_clients.py:203`, `:330-387` — already in the repo, cited by D-07/Pitfall B). CORRECTED: the `AssertionError` below is raised on the in-flight request task; `close()` itself returns cleanly (`tests/test_clients.py:190-203`). TEST-04 does not show `close()` raising:
 ```python
 # tests/test_clients.py:203
 _HTTPX_INFLIGHT_NO_CANCEL_EXC: type[BaseException] = AssertionError
@@ -351,7 +361,7 @@ assert isinstance(result[0], _HTTPX_INFLIGHT_NO_CANCEL_EXC), (
     "If this is an intentional httpx change, update _HTTPX_INFLIGHT_NO_CANCEL_EXC."
 )
 ```
-The new D-11 shutdown test ("A shutdown test makes one client's close raise") should mock a client's `.close()` to raise `AssertionError` directly (`AsyncMock(side_effect=AssertionError("boom"))`) rather than trying to reproduce TEST-04's real in-flight ASGI scenario — this pins the same "broad `except Exception`, not `except httpx.HTTPError`" contract (Pitfall B) at the `_safe_close` level, cheaply.
+The new D-11 shutdown test ("A shutdown test makes one client's close raise") should mock a client's `.close()` to raise `AssertionError` directly (`AsyncMock(side_effect=AssertionError("boom"))`) as a synthetic failure — this pins the "broad `Exception`, not `httpx.HTTPError`" contract (D-07, Pitfall B) at the `_safe_close` level, cheaply. It proves the breadth of the catch and that later steps continue; it does not reproduce TEST-04, where `close()` does not raise.
 
 **`make_settings`/`default_state` factories to reuse unchanged** (`tests/conftest.py:39-99`):
 ```python
@@ -392,6 +402,7 @@ def _sanitize_exc(exc: Exception) -> str:
 **Apply to:** `_safe_close`'s `except Exception` branch; the D-05 summary line never needs this (it has no exception, just a count); the D-06/D-07 per-step warning lines always route their `exc` through this, never `str(exc)` or an f-string embedding the raw exception.
 
 ### Bounded wait via `asyncio.timeout()`, never `asyncio.wait_for()`
+**CORRECTED:** applies to the existing shutdown drain only. `_safe_close` bounds its wait with `asyncio.wait({task}, timeout=...)` on an owned task (see Plan-check corrections); `asyncio.wait` never cancels on timeout, so it is not the `wait_for` idiom WR-01 rejected.
 **Source:** `triggarr/search/scheduler.py:701-716` (WR-01 comment + the existing shutdown-drain's `async with asyncio.timeout(drain): ...`).
 **Apply to:** `_safe_close`'s per-step cap. Already litigated once in this file (the drain); the new cap is the same idiom, same rationale (cancellation-safety), different call site.
 
