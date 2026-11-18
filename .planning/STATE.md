@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "ready -- Phase 89 next, discussion not started; Phase 88 landed on main via PR #63 (b4a25aa1)"
-stopped_at: "Phase 88 landed on main 2026-11-17 (PR #63, merge b4a25aa1; review acceptance attempt 2 passed at head 39ccfabb). Next: /bm:discuss-phase 89"
-last_updated: "2026-11-18T15:00:00.000Z"
-last_activity: "2026-11-18 -- Phase 88 close-out recorded; branch phase-89-startup-shutdown-resource-cleanup cut from main"
+status: "ready -- Phase 89 context gathered, planning not started; Phase 88 landed on main via PR #63 (b4a25aa1)"
+stopped_at: "Phase 89 context gathered (89-CONTEXT.md, 12 decisions); next: /bm:plan-phase 89"
+last_updated: "2026-11-18T15:30:00.000Z"
+last_activity: "2026-11-18 -- Phase 89 context gathered"
 progress:
   total_phases: 6
   completed_phases: 2
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 89 (Startup & Shutdown Resource Cleanup) — NEXT, discussion not started
+Phase: 89 (Startup & Shutdown Resource Cleanup) — CONTEXT GATHERED, planning not started
 Plan: 0 plans yet
-Status: ready for /bm:discuss-phase 89. Phase 88 landed on main 2026-11-17 as PR #63 (merge `b4a25aa1`; acceptance passed at head `39ccfabb`, run 44016507883 attempt 2; main CI, Push on main and Release runs green on `b4a25aa1`)
+Status: ready for /bm:plan-phase 89 (context gathered 2026-11-18). Phase 88 landed on main 2026-11-17 as PR #63 (merge `b4a25aa1`; acceptance passed at head `39ccfabb`, run 44016507883 attempt 2; main CI, Push on main and Release runs green on `b4a25aa1`)
 Last activity: 2026-11-18 — Phase 88 close-out recorded; Phase 89 branch cut from main at `b4a25aa1`, carrying Phase 88's PR-head review, Codex and checkpoint records
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
@@ -174,12 +174,12 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 ## Session Continuity
 
 Last session: 2026-11-18T15:00:00.000Z
-Stopped at: Phase 88 merged (PR #63, 2026-11-17); Phase 89 not started
-Resume file: .planning/ROADMAP.md (Phase 89 section)
+Stopped at: Phase 89 context gathered
+Resume file: .planning/phases/89-startup-shutdown-resource-cleanup/89-CONTEXT.md
 
 ## Operator Next Steps
 
-- Discuss Phase 89 next (`/bm:discuss-phase 89`), on branch `phase-89-startup-shutdown-resource-cleanup` (cut from main at `b4a25aa1`; carries Phase 88's closeout records: this update, the PR #63 head review, Codex evidence and checkpoint copy)
+- Plan Phase 89 next (`/bm:plan-phase 89`; context gathered 2026-11-18), on branch `phase-89-startup-shutdown-resource-cleanup` (cut from main at `b4a25aa1`; carries Phase 88's closeout records: this update, the PR #63 head review, Codex evidence and checkpoint copy)
 - Production compose tracks `:main` but still runs v2.12.1 (`3cede40`, checked 2026-11-18); a pull and recreate now would run Phases 87 and 88. Not done yet
 - Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. The held branch `planning/post-v2.12.1` is pushed with the next substantive push, not on its own (no docs-only PRs)
 - Decide BM SA-01 (pin the uv version CI installs) -- see backlog/MAINTENANCE.md. SA-12 is in v2.14 scope in reduced form (startup is not affected; regression check plus an "unsupported" note)
