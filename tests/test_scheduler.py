@@ -1964,6 +1964,10 @@ class _FakeScheduler:
     def start(self) -> None:
         self.started = True
 
+    @property
+    def running(self) -> bool:
+        return self.started and self.shutdown_wait is None
+
     def shutdown(self, wait: bool = True) -> None:
         self.shutdown_wait = wait
 
@@ -3136,3 +3140,107 @@ async def test_startup_failure_cause_line_never_logs_credentials(tmp_path):
     assert obs.lines[obs.lines.index(cause):] == [cause, _summary("the database and 0 connection(s)")]
     assert not any("SECRET-KEY-123" in line or "apikey" in line for line in obs.lines)
     assert obs.rescue_errors == []
+
+
+async def test_startup_failure_scheduler_started_shuts_scheduler_down(tmp_path):
+    class _FailingUpdateCheckScheduler(_FakeScheduler):
+        def add_job(self, *args, **kwargs) -> None:
+            if kwargs.get("id") == "update_check":
+                raise RuntimeError("simulated add_job failure")
+            super().add_job(*args, **kwargs)
+
+    tracked: list = []
+    fake = _FailingUpdateCheckScheduler()
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)):
+        obs = await _observe_lifespan(settings, tmp_path, fake, tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated add_job failure"
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True]
+    assert obs.worker_alive == [False]
+    assert fake.started is True
+    assert obs.scheduler_shutdown_wait is False
+    assert obs.scheduler_running is False
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the scheduler, the database and 1 connection(s)")]
+    assert len([j for j in fake.jobs if j[1].get("id") == "radarr_Default_search"]) == 1
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_partial_scheduler_start_is_stopped(tmp_path):
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.schedulers.base import STATE_STOPPED
+
+    class _PartialStartScheduler(AsyncIOScheduler):
+        # BaseScheduler.start() sets STATE_RUNNING and only then calls wakeup(),
+        # so start() raises with the scheduler already running. A flag set only
+        # after start() returns would miss this case.
+        def __init__(self) -> None:
+            super().__init__()
+            self.injected = RuntimeError("simulated wakeup failure")
+
+        def wakeup(self) -> None:
+            raise self.injected
+
+    tracked: list = []
+    real = _PartialStartScheduler()
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)):
+        obs = await _observe_lifespan(settings, tmp_path, real, tracked=tracked, log_level="WARNING")
+    assert obs.exc is real.injected
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True]
+    assert obs.worker_alive == [False]
+    assert obs.scheduler_running is False
+    assert real.state == STATE_STOPPED
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the scheduler, the database and 1 connection(s)")]
+    assert not any("SchedulerNotRunningError" in line for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_scheduler_start_raises_no_shutdown_call(tmp_path):
+    tracked: list = []
+    fake = _FailingStartScheduler()
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)):
+        obs = await _observe_lifespan(settings, tmp_path, fake, tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    _common_failed_startup_asserts(obs)
+    assert fake.started is False
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.clients_closed == [True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 1 connection(s)")]
+    assert obs.rescue_errors == []
+
+
+async def test_stop_scheduler_if_running_reports_a_scheduler_that_stays_running():
+    from triggarr.search.scheduler import _stop_scheduler_if_running
+
+    class _StuckScheduler(_FakeScheduler):
+        started = True
+
+        @property
+        def running(self) -> bool:
+            return True
+
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        stuck = _StuckScheduler()
+        assert await _stop_scheduler_if_running("Startup cleanup", stuck) is False
+        assert stuck.shutdown_wait is False
+        assert _sink_lines(sink) == ["WARNING | Startup cleanup: the scheduler did not stop; continuing"]
+
+        sink.truncate(0)
+        sink.seek(0)
+        started = _FakeScheduler()
+        started.started = True
+        assert await _stop_scheduler_if_running("Startup cleanup", started) is True
+        assert _sink_lines(sink) == []
+
+        never = _FakeScheduler()
+        assert await _stop_scheduler_if_running("Startup cleanup", never) is False
+        assert never.shutdown_wait is None
+        assert _sink_lines(sink) == []
+    finally:
+        logger.remove(sink_id)
