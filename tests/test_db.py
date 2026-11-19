@@ -29,6 +29,7 @@ from triggarr.db import (
     _migrate_v1,
     _migrate_v10,
     _retire_connection,
+    close_out_orphaned_pending_searches,
     close_out_removed_instance_searches,
     get_dashboard_stats,
     get_owned_grabs,
@@ -3854,4 +3855,237 @@ async def test_close_out_instance_removed_logs_one_info_line(tmp_path, log_lines
     infos = [m for level, m in log_lines if level == "INFO" and "Radarr/Main" in m]
     assert len(infos) == 1
     assert "2" in infos[0]
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Orphaned pending-search sweep (Phase 90)
+# ---------------------------------------------------------------------------
+
+_CONFIGURED = {("Sonarr", "sid-s"), ("Radarr", "sid-r"), ("Lidarr", "sid-l")}
+
+
+async def _add_row(db, app, stable_id, name, *, item_id: int | None = 1, outcome="searched", instance="Main") -> int:
+    before = set(await _ids(db))
+    await insert_search_entry(
+        db, app, "missing", name, outcome=outcome, item_id=item_id, instance_id=instance,
+        instance_stable_id=stable_id, max_rows=100,
+    )
+    return next(i for i in await _ids(db) if i not in before)
+
+
+async def _legacy_sonarr_with_cutover(db) -> list[int]:
+    """Two pre-cutover pending Sonarr rows (one NULL-ID, one with an ID), then a recorded cutover."""
+    legacy = [
+        await _add_row(db, "Sonarr", None, "Legacy no id"),
+        await _add_row(db, "Sonarr", "sid-gone", "Legacy with id"),
+    ]
+    await _insert_cutover(db, max(legacy))
+    return legacy
+
+
+async def _is_legacy(db, row_id) -> bool:
+    entries = (await get_search_history(db))["entries"]
+    return next(e["is_legacy"] for e in entries if e["id"] == row_id)
+
+
+async def test_orphan_sweep_closes_unconfigured_and_null_id_rows(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    await _legacy_sonarr_with_cutover(db)
+    orphans = [
+        await _add_row(db, "Radarr", "sid-gone", "r gone"),
+        await _add_row(db, "Lidarr", "sid-gone2", "l gone", outcome="partial"),
+        await _add_row(db, "Sonarr", "sid-gone3", "s gone"),
+        await _add_row(db, "Radarr", None, "r null"),
+        await _add_row(db, "Lidarr", None, "l null no item", item_id=None),
+        await _add_row(db, "Radarr", "sid-s", "r with sonarr id"),
+    ]
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 6
+    for _id, outcome, detail, resolved_at in await _rows(db, orphans):
+        assert outcome == OUTCOME_INSTANCE_REMOVED
+        assert detail == "instance removed"
+        assert resolved_at is not None
+    await db.close()
+
+
+async def test_orphan_sweep_leaves_configured_instances_alone(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    kept = [
+        await _add_row(db, "Sonarr", "sid-s", "s"),
+        await _add_row(db, "Radarr", "sid-r", "r", outcome="partial"),
+        await _add_row(db, "Lidarr", "sid-l", "l"),
+    ]
+    before = await _rows(db, kept)
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 0
+    assert await _rows(db, kept) == before
+    await db.close()
+
+
+async def test_orphan_sweep_never_touches_legacy_rows(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    legacy = await _legacy_sonarr_with_cutover(db)
+    before = await _rows(db, legacy)
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 0
+    assert await _rows(db, legacy) == before
+    for row_id in legacy:
+        assert await _is_legacy(db, row_id) is True
+    await db.close()
+
+
+async def test_orphan_sweep_leaves_finished_rows_alone(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    ids = [
+        await _add_row(db, "Radarr", "sid-gone", f"done {outcome}", outcome=outcome)
+        for outcome in ("grabbed", "unresolved", "failed")
+    ]
+    before = await _rows(db, ids)
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 0
+    assert await _rows(db, ids) == before
+    await db.close()
+
+
+async def test_orphan_sweep_is_idempotent(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    ids = [await _add_row(db, "Radarr", "sid-gone", "a"), await _add_row(db, "Radarr", None, "b")]
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 2
+    first = await _rows(db, ids)
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 0
+    assert await _rows(db, ids) == first
+    await db.close()
+
+
+async def test_orphan_sweep_with_no_configured_instances_closes_every_orphan(tmp_path, log_lines):
+    db, _ = await _init_test_db(tmp_path)
+    legacy = await _legacy_sonarr_with_cutover(db)
+    orphans = [
+        await _add_row(db, "Radarr", "sid-gone", "r gone"),
+        await _add_row(db, "Lidarr", "sid-gone2", "l gone"),
+        await _add_row(db, "Sonarr", "sid-gone3", "s gone"),
+        await _add_row(db, "Radarr", None, "r null"),
+    ]
+    finished = [await _add_row(db, "Radarr", "sid-gone", "done", outcome="grabbed")]
+    legacy_before = await _rows(db, legacy)
+    finished_before = await _rows(db, finished)
+    assert await close_out_orphaned_pending_searches(db, configured=set()) == 4
+    assert {r[1] for r in await _rows(db, orphans)} == {OUTCOME_INSTANCE_REMOVED}
+    assert await _rows(db, legacy) == legacy_before
+    assert await _rows(db, finished) == finished_before
+    for row_id in legacy:
+        assert await _is_legacy(db, row_id) is True
+    infos = [m for level, m in log_lines if level == "INFO" and "orphaned" in m]
+    assert len(infos) == 1
+    assert not [m for _level, m in log_lines if "skipped" in m.lower()]
+    await db.close()
+
+
+@pytest.mark.parametrize("app", ["Sonarr", "Radarr", "Lidarr"])
+async def test_orphan_sweep_repairs_failed_close_out_of_last_instance(tmp_path, app):
+    db, _ = await _init_test_db(tmp_path)
+    legacy = await _legacy_sonarr_with_cutover(db)
+    stuck = [await _add_row(db, app, "sid-last", "stuck a"), await _add_row(db, app, "sid-last", "stuck b")]
+    legacy_before = await _rows(db, legacy)
+    assert await close_out_orphaned_pending_searches(db, configured=set()) == 2
+    assert {r[1] for r in await _rows(db, stuck)} == {OUTCOME_INSTANCE_REMOVED}
+    assert await _rows(db, legacy) == legacy_before
+    assert await _is_legacy(db, legacy[0]) is True
+    await db.close()
+
+
+async def test_orphan_sweep_logs_one_total_line(tmp_path, log_lines):
+    db, _ = await _init_test_db(tmp_path)
+    for i in range(6):
+        await _add_row(db, "Radarr", f"sid-gone-{i}", f"r{i}")
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 6
+    infos = [m for level, m in log_lines if level == "INFO" and "orphaned" in m]
+    assert infos == ["Startup: closed 6 orphaned pending search(es) of removed instances"]
+    log_lines.clear()
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 0
+    assert not [m for level, m in log_lines if level == "INFO"]
+    await db.close()
+
+
+async def test_orphan_sweep_rolls_back_and_reraises_on_failure(tmp_path, monkeypatch):
+    db, _ = await _init_test_db(tmp_path)
+    ids = [await _add_row(db, "Radarr", "sid-gone", "a"), await _add_row(db, "Lidarr", "sid-gone2", "b")]
+    faults = _Faults(monkeypatch, db)
+    faults.fail_commit()
+    with pytest.raises(RuntimeError):
+        await close_out_orphaned_pending_searches(db, configured=_CONFIGURED)
+    assert faults.commit_in_transaction == [True]
+    assert db.in_transaction is False
+    assert is_connection_retired(db) is False
+    monkeypatch.undo()
+    await _unrelated_commit(db)
+    assert _pending_outcomes(await _rows(db, ids))
+    await db.close()
+
+
+async def test_orphan_sweep_cancelled_between_group_updates_rolls_back_everything(tmp_path, monkeypatch):
+    db, _ = await _init_test_db(tmp_path)
+    ids = [await _add_row(db, "Radarr", "sid-gone", "a"), await _add_row(db, "Lidarr", "sid-gone2", "b")]
+    real = db.execute
+    second_update = asyncio.Event()
+    gate = asyncio.Event()
+    updates = 0
+
+    def execute(sql, *args, **kwargs):
+        nonlocal updates
+        if not sql.lstrip().upper().startswith("UPDATE"):
+            return real(sql, *args, **kwargs)
+        updates += 1
+        if updates < 2:
+            return real(sql, *args, **kwargs)
+
+        async def gated():
+            second_update.set()
+            await gate.wait()
+            return await real(sql, *args, **kwargs)
+
+        return gated()
+
+    monkeypatch.setattr(db, "execute", execute)
+    task = asyncio.ensure_future(close_out_orphaned_pending_searches(db, configured=_CONFIGURED))
+    await second_update.wait()
+    assert db.in_transaction is True  # the first group's UPDATE has really been applied
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    monkeypatch.undo()
+    assert db.in_transaction is False
+    assert _pending_outcomes(await _rows(db, ids))
+    await _unrelated_commit(db)
+    assert _pending_outcomes(await _rows(db, ids))
+    await db.close()
+
+
+async def test_orphan_sweep_persistent_rollback_failure_retires_the_connection(tmp_path, monkeypatch):
+    db, db_path = await _init_test_db(tmp_path)
+    ids = [await _add_row(db, "Radarr", "sid-gone", "a"), await _add_row(db, "Lidarr", "sid-gone2", "b")]
+    faults = _Faults(monkeypatch, db)
+    faults.fail_commit()
+    faults.script_rollback(lambda n: "oserror")
+    with pytest.raises(RuntimeError):
+        await close_out_orphaned_pending_searches(db, configured=_CONFIGURED)
+    assert faults.commit_in_transaction == [True]
+    assert is_connection_retired(db) is True
+    monkeypatch.undo()
+    with pytest.raises(ValueError):
+        await db.commit()
+    assert _pending_outcomes(await _rows_via_new_connection(db_path, ids))
+    async with aiosqlite.connect(db_path) as other:
+        await _unrelated_commit(other)
+        assert _pending_outcomes(await _rows(other, ids))
+    new_db = await replace_retired_connection(db)
+    try:
+        assert await close_out_orphaned_pending_searches(new_db, configured=_CONFIGURED) == 2
+    finally:
+        await new_db.close()
+
+
+async def test_orphan_sweep_without_recorded_cutover_still_spares_configured_rows(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    kept = [await _add_row(db, "Sonarr", "sid-s", "s"), await _add_row(db, "Radarr", "sid-r", "r")]
+    before = await _rows(db, kept)
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 0
+    assert await _rows(db, kept) == before
     await db.close()
