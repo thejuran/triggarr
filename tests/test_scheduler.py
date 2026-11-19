@@ -2038,6 +2038,7 @@ async def test_lifespan_cutover_after_init_db(tmp_path):
             "triggarr.search.scheduler.ensure_cutover_recorded",
             new=AsyncMock(side_effect=fake_ensure_cutover_recorded),
         ),
+        patch("triggarr.search.scheduler.close_out_orphaned_pending_searches", new=AsyncMock(), create=True),
         patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()),
     ):
         lifespan_fn = create_lifespan(settings, state_path, config_path)
@@ -2080,6 +2081,273 @@ async def test_lifespan_passes_stable_id_mapping_to_init_db(tmp_path):
             pass
 
     assert captured["instance_stable_ids"] == {("Radarr", "Default"): "sid-r", ("Sonarr", "Main"): "sid-m"}
+
+
+# ---------------------------------------------------------------------------
+# Startup orphan sweep
+# ---------------------------------------------------------------------------
+
+
+def _sweep_settings() -> Settings:
+    return Settings(
+        sonarr={"Main": InstanceConfig(url="http://sonarr:8989", api_key="k-s", enabled=True, id="sid-s")},
+        radarr={"Movies": InstanceConfig(url="http://radarr:7878", api_key="k-r", enabled=True, id="sid-r")},
+        lidarr={"Music": InstanceConfig(url="http://lidarr:8686", api_key="k-l", enabled=False, id="sid-l")},
+    )
+
+
+async def _sweep_seed(db_path: Path, rows: list[tuple[str, str, str | None]], *, init: bool = False) -> None:
+    """Insert pending (app, item name, stable ID) rows through a direct connection."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        if init:
+            await init_db(db, db_path)
+        for app, name, stable_id in rows:
+            await insert_search_entry(
+                db, app, "missing", name, instance_id=name, instance_stable_id=stable_id,
+            )
+
+
+async def _sweep_rows(db_path: Path) -> dict[str, tuple[str, str | None]]:
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT item_name, outcome, resolved_at FROM search_history") as cur:
+            return {r[0]: (r[1], r[2]) for r in await cur.fetchall()}
+
+
+async def _sweep_run_once(settings: Settings, tmp_path: Path, probe=None):
+    from triggarr.search.scheduler import create_lifespan
+
+    fake = _FakeScheduler()
+    with patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=fake):
+        lifespan_fn = create_lifespan(settings, tmp_path / "state.json", tmp_path / "triggarr.toml")
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            if probe is not None:
+                return await probe(app)
+    return fake
+
+
+async def test_lifespan_sweep_runs_after_cutover_and_before_scheduler_start(tmp_path):
+    from triggarr.search.scheduler import create_lifespan
+
+    order: list[str] = []
+    captured: dict = {}
+
+    async def fake_init_db(db, db_path, **kwargs):
+        order.append("init_db")
+
+    async def fake_cutover(db, sonarr_instances):
+        order.append("ensure_cutover_recorded")
+
+    async def fake_sweep(db, *, configured):
+        order.append("close_out_orphaned_pending_searches")
+        captured["configured"] = set(configured)
+        return 0
+
+    class _RecordingScheduler(_FakeScheduler):
+        def start(self) -> None:
+            order.append("scheduler.start")
+            super().start()
+
+    with (
+        patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=fake_init_db)),
+        patch("triggarr.search.scheduler.ensure_cutover_recorded", new=AsyncMock(side_effect=fake_cutover)),
+        patch(
+            "triggarr.search.scheduler.close_out_orphaned_pending_searches",
+            new=AsyncMock(side_effect=fake_sweep),
+            create=True,
+        ),
+        patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_RecordingScheduler()),
+    ):
+        lifespan_fn = create_lifespan(_sweep_settings(), tmp_path / "state.json", tmp_path / "triggarr.toml")
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            pass
+
+    assert order == ["init_db", "ensure_cutover_recorded", "close_out_orphaned_pending_searches", "scheduler.start"]
+    assert captured["configured"] == {("Sonarr", "sid-s"), ("Radarr", "sid-r"), ("Lidarr", "sid-l")}
+
+
+_SWEEP_ORPHANS = ["sonarr-gone", "radarr-gone", "radarr-null", "lidarr-gone"]
+_SWEEP_KEPT = ["sonarr-s", "radarr-r", "lidarr-l"]
+_SWEEP_LEGACY = ["legacy-null", "legacy-old"]
+
+
+async def _sweep_two_runs(tmp_path: Path) -> Path:
+    """Legacy rows, first run (records cutover), then post-cutover rows. Returns the database path."""
+    db_path = tmp_path / "triggarr.db"
+    await _sweep_seed(
+        db_path, [("Sonarr", "legacy-null", None), ("Sonarr", "legacy-old", "sid-old-sonarr")], init=True,
+    )
+    await _sweep_run_once(_sweep_settings(), tmp_path)
+    await _sweep_seed(db_path, [
+        ("Sonarr", "sonarr-s", "sid-s"), ("Sonarr", "sonarr-gone", "sid-gone"),
+        ("Radarr", "radarr-r", "sid-r"), ("Radarr", "radarr-gone", "sid-gone"), ("Radarr", "radarr-null", None),
+        ("Lidarr", "lidarr-l", "sid-l"), ("Lidarr", "lidarr-gone", "sid-gone"),
+    ])
+    return db_path
+
+
+async def test_lifespan_sweep_closes_orphans_and_spares_configured_disabled_and_legacy(tmp_path):
+    db_path = await _sweep_two_runs(tmp_path)
+    assert all(v[0] == "searched" for v in (await _sweep_rows(db_path)).values())
+
+    await _sweep_run_once(_sweep_settings(), tmp_path)
+
+    rows = await _sweep_rows(db_path)
+    assert {n: rows[n][0] for n in _SWEEP_ORPHANS} == dict.fromkeys(_SWEEP_ORPHANS, "instance_removed")
+    assert {n: rows[n][0] for n in _SWEEP_KEPT} == dict.fromkeys(_SWEEP_KEPT, "searched")
+    assert {n: rows[n][0] for n in _SWEEP_LEGACY} == dict.fromkeys(_SWEEP_LEGACY, "searched")
+
+
+async def test_lifespan_sweep_is_idempotent_across_restarts(tmp_path):
+    db_path = await _sweep_two_runs(tmp_path)
+    await _sweep_run_once(_sweep_settings(), tmp_path)
+    first = await _sweep_rows(db_path)
+    assert first["sonarr-gone"][0] == "instance_removed"
+
+    await _sweep_run_once(_sweep_settings(), tmp_path)
+
+    assert await _sweep_rows(db_path) == first
+
+
+async def test_lifespan_sweep_failure_does_not_stop_startup(tmp_path):
+    fake = _FakeScheduler()
+    boom = AsyncMock(side_effect=RuntimeError("boom http://user:s3cret@host/"))
+    with patch("triggarr.search.scheduler.close_out_orphaned_pending_searches", new=boom, create=True):
+        obs = await _observe_lifespan(make_settings(), tmp_path, fake, log_level="ERROR")
+    assert obs.exc is None
+    assert obs.reached_yield is True
+    assert fake.started is True
+    sweep_lines = [line for line in obs.lines if "orphaned pending searches" in line]
+    assert len(sweep_lines) == 1
+    assert sweep_lines[0].startswith("ERROR")
+    assert "RuntimeError" in sweep_lines[0]
+    assert not any("s3cret" in line for line in obs.lines)
+
+
+async def test_lifespan_sweep_cancellation_reaches_startup_cleanup(tmp_path):
+    fake = _FakeScheduler()
+    cancel = AsyncMock(side_effect=asyncio.CancelledError())
+    with patch("triggarr.search.scheduler.close_out_orphaned_pending_searches", new=cancel, create=True):
+        obs = await _observe_lifespan(make_settings(), tmp_path, fake, log_level="WARNING")
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    _common_failed_startup_asserts(obs)
+    assert fake.started is False
+    assert obs.worker_alive == [False]
+
+
+def _retiring_sweep(received: list):
+    """A sweep that leaves an uncommitted UPDATE on its connection, retires it and fails."""
+    from triggarr.db import _retire_connection
+
+    async def sweep(db, *, configured):
+        received.append(db)
+        await db.execute("UPDATE search_history SET outcome = 'instance_removed' WHERE outcome = 'searched'")
+        await _retire_connection(db)
+        raise RuntimeError("rollback could not be verified")
+
+    return sweep
+
+
+async def test_lifespan_sweep_failure_with_retired_connection_starts_on_a_replacement(tmp_path):
+    from triggarr.db import is_connection_retired
+
+    db_path = await _sweep_two_runs(tmp_path)
+    received: list = []
+    sink, sink_id = _capture_sink("ERROR")
+
+    async def probe(app):
+        db = app.state.db
+        assert db is not received[0]
+        assert is_connection_retired(db) is False
+        async with db.execute("SELECT item_name, outcome FROM search_history") as cur:
+            rows = {r["item_name"]: r["outcome"] for r in await cur.fetchall()}
+        assert all(rows[n] == "searched" for n in _SWEEP_ORPHANS)
+        await insert_search_entry(db, "Sonarr", "missing", "unrelated", instance_id="Main", instance_stable_id="sid-s")
+        async with db.execute("SELECT outcome FROM search_history WHERE item_name = 'sonarr-gone'") as cur:
+            assert (await cur.fetchone())["outcome"] == "searched"
+
+    try:
+        with patch(
+            "triggarr.search.scheduler.close_out_orphaned_pending_searches",
+            new=AsyncMock(side_effect=_retiring_sweep(received)),
+            create=True,
+        ):
+            fake = await _sweep_run_once(_sweep_settings(), tmp_path, probe)
+    finally:
+        logger.remove(sink_id)
+    del fake
+    assert (await _sweep_rows(db_path))["sonarr-gone"][0] == "searched"
+    lines = [line for line in _sink_lines(sink) if "orphaned pending searches" in line]
+    assert len(lines) == 1
+    assert "RuntimeError" in lines[0]
+    assert "rollback could not be verified" not in lines[0]
+
+
+async def test_lifespan_sweep_failure_with_unreplaceable_connection_stops_startup(tmp_path):
+    fake = _FakeScheduler()
+    received: list = []
+    with (
+        patch(
+            "triggarr.search.scheduler.close_out_orphaned_pending_searches",
+            new=AsyncMock(side_effect=_retiring_sweep(received)),
+            create=True,
+        ),
+        patch(
+            "triggarr.search.scheduler.replace_retired_connection",
+            new=AsyncMock(side_effect=OSError("open s3cret")),
+            create=True,
+        ),
+    ):
+        obs = await _observe_lifespan(make_settings(), tmp_path, fake, log_level="WARNING")
+    assert isinstance(obs.exc, OSError)
+    _common_failed_startup_asserts(obs)
+    assert fake.started is False
+    assert obs.worker_alive == [False]
+    assert not any("s3cret" in line for line in obs.lines)
+
+
+async def test_lifespan_sweep_with_zero_instances_closes_pre_release_orphans_and_keeps_legacy(tmp_path):
+    db_path = tmp_path / "triggarr.db"
+    await _sweep_seed(
+        db_path, [("Sonarr", "legacy-null", None), ("Sonarr", "legacy-old", "sid-old-sonarr")], init=True,
+    )
+    await _sweep_run_once(_sweep_settings(), tmp_path)
+    await _sweep_seed(db_path, [
+        ("Sonarr", "sonarr-gone", "sid-gone"), ("Radarr", "radarr-gone", "sid-gone"),
+        ("Radarr", "radarr-null", None), ("Lidarr", "lidarr-gone", "sid-gone"),
+    ])
+
+    async def probe(app):
+        from triggarr.db import get_recent_searches
+
+        return {r["name"]: r["is_legacy"] for r in await get_recent_searches(app.state.db, 50)}
+
+    legacy_flags = await _sweep_run_once(Settings(), tmp_path, probe)
+
+    rows = await _sweep_rows(db_path)
+    assert {n: rows[n][0] for n in _SWEEP_ORPHANS} == dict.fromkeys(_SWEEP_ORPHANS, "instance_removed")
+    assert {n: rows[n][0] for n in _SWEEP_LEGACY} == dict.fromkeys(_SWEEP_LEGACY, "searched")
+    assert legacy_flags["legacy-null"] is True
+    assert legacy_flags["legacy-old"] is True
+
+
+@pytest.mark.parametrize("app_type", ["sonarr", "radarr", "lidarr"])
+async def test_lifespan_sweep_repairs_failed_close_out_of_last_instance(tmp_path, app_type):
+    db_path = tmp_path / "triggarr.db"
+    await _sweep_seed(db_path, [("Sonarr", "legacy-null", None)], init=True)
+    only = Settings(**{app_type: {"Main": InstanceConfig(url="http://x:1", api_key="k", enabled=True, id="sid-last")}})
+    await _sweep_run_once(only, tmp_path)
+    await _sweep_seed(db_path, [(app_type.title(), "last-a", "sid-last"), (app_type.title(), "last-b", "sid-last")])
+    assert (await _sweep_rows(db_path))["last-a"][0] == "searched"
+
+    await _sweep_run_once(Settings(), tmp_path)
+
+    rows = await _sweep_rows(db_path)
+    assert rows["last-a"][0] == "instance_removed"
+    assert rows["last-b"][0] == "instance_removed"
+    assert rows["legacy-null"][0] == "searched"
 
 
 async def test_lifespan_associates_existing_rows_on_upgrade(tmp_path, monkeypatch):
