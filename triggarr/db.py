@@ -15,7 +15,7 @@ import re
 import shutil
 import sqlite3
 import weakref
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1589,6 +1589,70 @@ async def close_out_removed_instance_searches(
         raise
     logger.info("Closed out {n} pending search(es) of removed {app}/{inst}", n=closed, app=app, inst=instance_id)
     return closed
+
+
+async def close_out_orphaned_pending_searches(
+    db: aiosqlite.Connection, *, configured: Collection[tuple[str, str]],
+) -> int:
+    """Give every pending search that no configured instance owns the ``instance_removed`` outcome.
+
+    A search is an orphan when its stable ID is missing or its (stored title-case
+    app, stable ID) pair is not in ``configured``. Legacy rows, finished rows and
+    rows of configured pairs are never touched, so repeating the sweep is safe.
+    No selection or update uses a display name.
+
+    Caller contract: run after ``ensure_cutover_recorded`` (Legacy is defined by
+    the recorded cutover), and pass every configured instance, disabled ones
+    included. An empty collection is valid and means no instance is configured:
+    every pending, non-Legacy search is then closed. There is deliberately no
+    guard on the size of the set. A missing, corrupt or invalid configuration
+    stops the process in ``ensure_config`` before the sweep can run, so the sweep
+    only ever sees a validated configuration; a valid configuration with no
+    instances is what remains after the last instance is removed (including when
+    that removal's close-out failed after the settings write), which is the case
+    this sweep repairs. Rows with no stable ID cannot belong to a configured
+    instance and are closed. No migration does this, because a migration cannot
+    see the cutover and would not repair a close-out that failed later.
+
+    The transaction is finalized and verified before any error or cancellation
+    surfaces; when that cannot be verified the connection is retired
+    (``is_connection_retired(db)``) and the caller replaces it with
+    ``replace_retired_connection(db)``.
+
+    Returns the number of rows closed.
+    """
+    configured_pairs = set(configured)
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    total = 0
+    try:
+        async with db.execute(
+            "SELECT app, instance_stable_id, COUNT(*) FROM search_history "  # noqa: S608
+            f"WHERE {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL} GROUP BY app, instance_stable_id",
+        ) as cursor:
+            groups = [(r[0], r[1]) for r in await cursor.fetchall()]
+        for app, stable_id in groups:
+            if stable_id and (app, stable_id) in configured_pairs:
+                continue
+            update = await db.execute(
+                "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? "  # noqa: S608
+                f"WHERE app = ? AND instance_stable_id IS ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",
+                (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, now, app, stable_id),
+            )
+            logger.debug("Orphan sweep: closed {n} pending search(es) of {app}", n=update.rowcount, app=app)
+            total += update.rowcount
+        await db.commit()
+    except BaseException as exc:  # includes cancellation: see _rollback_through_cancellation
+        cancelled = await _rollback_through_cancellation(
+            db, context="close_out_orphaned_pending_searches", original=exc,
+        )
+        if cancelled is not None and not isinstance(exc, asyncio.CancelledError):
+            raise cancelled from exc
+        raise
+    if total:
+        logger.info("Startup: closed {n} orphaned pending search(es) of removed instances", n=total)
+    else:
+        logger.debug("Startup: no orphaned pending searches to close")
+    return total
 
 
 async def get_owned_grabs(

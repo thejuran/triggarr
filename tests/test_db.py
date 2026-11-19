@@ -4077,7 +4077,8 @@ async def test_orphan_sweep_persistent_rollback_failure_retires_the_connection(t
         assert _pending_outcomes(await _rows(other, ids))
     new_db = await replace_retired_connection(db)
     try:
-        assert await close_out_orphaned_pending_searches(new_db, configured=_CONFIGURED) == 2
+        # the two abandoned groups plus the unrelated row committed on the other connection
+        assert await close_out_orphaned_pending_searches(new_db, configured=_CONFIGURED) == 3
     finally:
         await new_db.close()
 
