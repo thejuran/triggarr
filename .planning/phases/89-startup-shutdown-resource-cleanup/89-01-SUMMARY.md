@@ -75,7 +75,7 @@ Task 2, run by explicit node ID without `-x` (`3 failed, 1 passed`):
 - **Issue:** A startup `WARNING | Attribution cutover: ... no stable ID yet` line is emitted in these test setups, so "exactly one WARNING line" was wrong as written.
 - **Fix:** Tests assert on warnings starting with `WARNING | Shutdown:`. Folded into the feat commit.
 - **Cost if wrong:** a stray non-shutdown warning would not be caught by these tests; low.
-- **Commit:** f58eebd6
+- **Commit:** 6a1155fd
 
 **2. [Minor] `_close_failure_reason` helper not kept**: the sanitize-or-type-name expression is inlined in `_safe_close` so the literal `_sanitize_exc(` appears in its body per the acceptance check. Cost if wrong: none.
 
@@ -93,11 +93,13 @@ None.
 
 ## Commits
 
-- 376ae008 test(89-01): add failing tests for the safe close helpers
-- 5bf4c5bf feat(89-01): add non-raising close helpers with a bounded owned-task wait
-- b0119db6 test(89-01): add failing tests for isolated shutdown closes
-- f58eebd6 feat(89-01): isolate each shutdown close so one failure never blocks the rest
+- 8c01f812 test(89-01): add failing tests for the safe close helpers
+- acb838c3 feat(89-01): add non-raising close helpers with a bounded owned-task wait
+- 12e9ea02 test(89-01): add failing tests for isolated shutdown closes
+- 6a1155fd feat(89-01): isolate each shutdown close so one failure never blocks the rest
 
 ## Self-Check: PASSED
 
 Files and commits above exist (verified via git log and test runs).
+
+> Commit hashes updated 2026-11-18: the branch was rebuilt commit-by-commit (tree-identical, owner-approved) so every commit is a local `commit` reflog entry for the trusted Codex check; the original hashes are on `backup/phase-89-pre-rebuild`.

@@ -350,7 +350,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 | 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
 | 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Complete (merged PR #63) | 2026-11-17 |
-| 89. Startup & Shutdown Resource Cleanup | 2/2 | Plans executed; review and PR pending | - |
+| 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; local review and verifier (22/22) finished; in review, PR not yet opened | - |
 | 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |
 | 92. Built-Image Recovery Demonstration | TBD | Not started | - |

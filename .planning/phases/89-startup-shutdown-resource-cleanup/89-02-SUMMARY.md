@@ -82,11 +82,13 @@ None.
 
 ## Commits
 
-- 1999eb85 test(89-02): add failing tests for failed-startup resource cleanup
-- e15f6142 feat(89-02): report the cause, then close the database and every opened client when startup fails
-- 1c9176b6 test(89-02): add failing tests for stopping a running scheduler after a failed startup
-- ea80976f feat(89-02): stop a scheduler left running by a failed startup
+- 6b5eeb05 test(89-02): add failing tests for failed-startup resource cleanup
+- 90db21b0 feat(89-02): report the cause, then close the database and every opened client when startup fails
+- 7a1dc852 test(89-02): add failing tests for stopping a running scheduler after a failed startup
+- 1a186d0e feat(89-02): stop a scheduler left running by a failed startup
 
 ## Self-Check: PASSED
 
 Four commits above exist in `git log`; modified files exist; test and lint runs observed as listed.
+
+> Commit hashes updated 2026-11-18: the branch was rebuilt commit-by-commit (tree-identical, owner-approved) so every commit is a local `commit` reflog entry for the trusted Codex check; the original hashes are on `backup/phase-89-pre-rebuild`.
