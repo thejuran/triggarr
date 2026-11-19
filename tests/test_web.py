@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import io
 import json
 import re
 import threading
@@ -23,11 +24,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 from httpx import ASGITransport
 from loguru import logger
+from pydantic import SecretStr
 
 from tests.conftest import make_settings
 from triggarr.config import _atomic_toml_write, _settings_to_dict
-from triggarr.db import init_db, insert_search_entry
+from triggarr.db import _retire_connection, init_db, insert_search_entry, is_connection_retired
 from triggarr.log_buffer import LogEntry, log_buffer
+from triggarr.logging import create_buffer_sink, create_redacting_sink
 from triggarr.models.config import APP_TYPES, GeneralConfig, InstanceConfig, Settings
 from triggarr.web.routes import STATIC_DIR, router
 
@@ -2703,6 +2706,423 @@ async def test_remove_instance_cancelled_close_logs_error(multi_instance_app):
     assert "radarr" in message
     assert "4K" in message
     assert "cancelled" in message
+
+
+# ---------------------------------------------------------------------------
+# Removed-instance pending-search close-out (Remove action)
+# ---------------------------------------------------------------------------
+
+_REMOVAL_APPS = [("radarr", "Radarr"), ("sonarr", "Sonarr"), ("lidarr", "Lidarr")]
+_REMOVED_KEY_SENTINEL = "removed-key-sentinel-4471"
+_URL_SENTINEL = "pw-sentinel-9913"
+
+
+def _prepare_removal(app, app_name: str, stable_id: str = "sid-old", api_key: str = "default-key") -> None:
+    """Make ``app_name`` / "Default" a configured instance with an explicit stable ID."""
+    settings = app.state.settings
+    if app_name == "lidarr":
+        app.state.settings = settings.model_copy(
+            update={
+                "lidarr": {
+                    "Default": InstanceConfig(
+                        url="http://lidarr:8686", api_key=api_key, enabled=True, id=stable_id
+                    )
+                }
+            }
+        )
+    else:
+        cfg = getattr(settings, app_name)["Default"]
+        cfg.id = stable_id
+        cfg.api_key = SecretStr(api_key)
+    assert "Default" in getattr(app.state.settings, app_name)
+
+
+async def _seed_rows(db, stored_app: str, stable_id: str | None, *, count: int = 2, name: str = "Default") -> list[int]:
+    """Insert ``count`` pending rows (searched, then partial) and return their row ids."""
+    async with db.execute("SELECT COALESCE(MAX(id), 0) FROM search_history") as cur:
+        before = (await cur.fetchone())[0]
+    for i in range(count):
+        await insert_search_entry(
+            db, stored_app, "missing", f"{stored_app} {stable_id} {i}", item_id=700 + before + i,
+            instance_id=name, instance_stable_id=stable_id,
+        )
+    async with db.execute("SELECT id FROM search_history WHERE id > ? ORDER BY id", (before,)) as cur:
+        ids = [r[0] for r in await cur.fetchall()]
+    if len(ids) > 1:
+        await db.execute("UPDATE search_history SET outcome = 'partial' WHERE id = ?", (ids[1],))
+        await db.commit()
+    return ids
+
+
+async def _row_states(db, ids: list[int]) -> list[tuple]:
+    marks = ",".join("?" for _ in ids)
+    async with db.execute(
+        f"SELECT outcome, detail, resolved_at FROM search_history WHERE id IN ({marks}) ORDER BY id",  # noqa: S608
+        tuple(ids),
+    ) as cur:
+        return [tuple(r) for r in await cur.fetchall()]
+
+
+async def _still_pending(db, ids: list[int]) -> bool:
+    return all(o in ("searched", "partial") and r is None for o, _d, r in await _row_states(db, ids))
+
+
+async def _post_removal(app, app_name: str, name: str = "Default", **kwargs):
+    with patch("triggarr.web.routes._atomic_toml_write", return_value=None):
+        async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            return await ac.post(f"/api/instance/remove/{app_name}/{name}", **kwargs)
+
+
+def _assert_normal_removal_response(response) -> None:
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/settings")
+
+
+def _assert_removal_applied(app, app_name: str, client) -> None:
+    assert "Default" not in getattr(app.state.settings, app_name)
+    assert "Default" not in getattr(app.state, f"{app_name}_clients")
+    assert "Default" not in app.state.triggarr_state[app_name]
+    assert (app_name, "Default") not in app.state.tag_cache
+    client.close.assert_awaited()
+
+
+def _removal_client(app, app_name: str):
+    """The removed instance's mocked client, with the tag-cache entry the removal clears."""
+    import time
+
+    app.state.tag_cache[(app_name, "Default")] = ([], time.monotonic())
+    return getattr(app.state, f"{app_name}_clients")["Default"]
+
+
+class _ErrorRecords:
+    def __init__(self, level: str = "WARNING") -> None:
+        self.records: list = []
+        self._level = level
+
+    def __enter__(self):
+        self._id = logger.add(lambda m: self.records.append(m.record), level=self._level)
+        return self.records
+
+    def __exit__(self, *exc):
+        logger.remove(self._id)
+
+
+def _install_capture_sinks(secrets: list[str]):
+    """Real redacting and buffer sinks configured with ``secrets``; returns (stderr text stream, handler ids)."""
+    stream = io.StringIO()
+    ids = [
+        logger.add(create_redacting_sink(secrets, stream=stream), format="{message}", level="INFO", colorize=False),
+        logger.add(create_buffer_sink(secrets), level="INFO", format="{message}"),
+    ]
+    return stream, ids
+
+
+@pytest.mark.parametrize(("app_name", "stored"), _REMOVAL_APPS)
+async def test_remove_instance_closes_out_pending_searches(multi_instance_app, app_name, stored):
+    app = multi_instance_app
+    _prepare_removal(app, app_name)
+    db = app.state.db
+    mine = await _seed_rows(db, stored, "sid-old")  # searched + partial
+    other = await _seed_rows(db, stored, "sid-other", count=1)
+    await insert_search_entry(
+        db, stored, "missing", "grabbed one", outcome="grabbed", item_id=1, instance_id="Default",
+        instance_stable_id="sid-old",
+    )
+    async with db.execute("SELECT id FROM search_history WHERE outcome = 'grabbed'") as cur:
+        grabbed = [r[0] for r in await cur.fetchall()]
+    client = _removal_client(app, app_name)
+
+    response = await _post_removal(app, app_name)
+
+    _assert_normal_removal_response(response)
+    for outcome, detail, resolved_at in await _row_states(db, mine):
+        assert outcome == "instance_removed"
+        assert detail == "instance removed"
+        assert resolved_at is not None
+    assert await _still_pending(db, other)
+    assert [s[0] for s in await _row_states(db, grabbed)] == ["grabbed"]
+    assert [call[0] for call in client.method_calls] == ["close"]
+
+
+async def test_remove_instance_close_out_failure_still_succeeds(multi_instance_app):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    client = _removal_client(app, "radarr")
+    with (
+        _ErrorRecords("ERROR") as records,
+        patch(
+            "triggarr.web.routes.close_out_removed_instance_searches",
+            AsyncMock(side_effect=RuntimeError("db boom")),
+        ),
+    ):
+        response = await _post_removal(app, "radarr")
+
+    _assert_normal_removal_response(response)
+    _assert_removal_applied(app, "radarr", client)
+    app.state.scheduler.get_job.assert_called()
+    app.state.scheduler.remove_job.assert_called_once_with("radarr_Default_search")
+    assert len(records) == 1
+    message = records[0]["message"]
+    assert "closing out its pending searches failed" in message
+    assert "RuntimeError" in message
+    assert "db boom" not in message
+
+
+async def test_remove_instance_close_out_failure_log_leaks_nothing(multi_instance_app):
+    from triggarr.startup import collect_secrets
+
+    app = multi_instance_app
+    _prepare_removal(app, "radarr", api_key=_REMOVED_KEY_SENTINEL)
+    post_removal = app.state.settings.model_copy(
+        update={"radarr": {k: v for k, v in app.state.settings.radarr.items() if k != "Default"}}
+    )
+    stream, handler_ids = _install_capture_sinks(collect_secrets(post_removal))
+    leaking = RuntimeError(f"failed with {_REMOVED_KEY_SENTINEL} at http://user:{_URL_SENTINEL}@host/")
+    try:
+        with patch(
+            "triggarr.web.routes.close_out_removed_instance_searches", AsyncMock(side_effect=leaking)
+        ):
+            response = await _post_removal(app, "radarr")
+    finally:
+        for handler_id in handler_ids:
+            logger.remove(handler_id)
+
+    _assert_normal_removal_response(response)
+    stderr_text = stream.getvalue()
+    entries = log_buffer.get_recent(100)
+    for sentinel in (_REMOVED_KEY_SENTINEL, _URL_SENTINEL):
+        assert sentinel not in stderr_text
+        assert all(sentinel not in e.message for e in entries)
+        assert sentinel not in response.text
+        assert sentinel not in str(response.headers)
+    assert "radarr/Default" in stderr_text and "RuntimeError" in stderr_text
+    assert any(e.level == "ERROR" and "radarr/Default" in e.message and "RuntimeError" in e.message for e in entries)
+
+
+async def test_remove_instance_cancelled_during_close_out_still_finishes_tidy_up(multi_instance_app):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    client = _removal_client(app, "radarr")
+    with patch(
+        "triggarr.web.routes.close_out_removed_instance_searches",
+        AsyncMock(side_effect=asyncio.CancelledError()),
+    ), pytest.raises(asyncio.CancelledError):
+        await _post_removal(app, "radarr")
+
+    _assert_removal_applied(app, "radarr", client)
+    assert not app.state.search_lock.locked()
+
+
+async def test_remove_instance_cancelled_during_real_close_out_finishes_db_cleanup_before_releasing_lock(
+    multi_instance_app, monkeypatch
+):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    db = app.state.db
+    ids = await _seed_rows(db, "Radarr", "sid-old")
+    client = _removal_client(app, "radarr")
+    seen: list[tuple] = []
+    client.close = AsyncMock(side_effect=lambda: seen.append((app.state.search_lock.locked(), db.in_transaction)))
+
+    real_execute = db.execute
+    applied, hold = asyncio.Event(), asyncio.Event()
+
+    def execute(sql, *args, **kwargs):
+        if sql.lstrip().upper().startswith("UPDATE"):
+
+            async def run():
+                cursor = await real_execute(sql, *args, **kwargs)
+                applied.set()
+                await hold.wait()
+                return cursor
+
+            return run()
+        return real_execute(sql, *args, **kwargs)
+
+    monkeypatch.setattr(db, "execute", execute)
+    task = asyncio.ensure_future(_post_removal(app, "radarr"))
+    await asyncio.wait_for(applied.wait(), 5)
+    assert db.in_transaction is True
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert seen == [(False, False)]
+    assert db.in_transaction is False
+    assert await _still_pending(db, ids)
+    monkeypatch.undo()
+    await insert_search_entry(db, "Lidarr", "missing", "Unrelated", item_id=1, instance_id="Other")
+    assert await _still_pending(db, ids)
+    _assert_removal_applied(app, "radarr", client)
+
+
+def _arm_unverifiable_rollback(db, monkeypatch) -> dict:
+    """The first commit after this call fails with the UPDATE applied; every rollback fails."""
+    real_commit = db.commit
+    state = {"in_transaction_at_commit": None, "armed": True}
+
+    async def commit():
+        if state["armed"]:
+            state["armed"] = False
+            state["in_transaction_at_commit"] = db.in_transaction
+            raise RuntimeError("commit failed")
+        return await real_commit()
+
+    monkeypatch.setattr(db, "commit", commit)
+    monkeypatch.setattr(db, "rollback", AsyncMock(side_effect=OSError("rollback failed")))
+    return state
+
+
+async def test_remove_instance_close_out_with_unverifiable_rollback_replaces_the_connection(
+    multi_instance_app, monkeypatch
+):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    old_db = app.state.db
+    ids = await _seed_rows(old_db, "Radarr", "sid-old")
+    client = _removal_client(app, "radarr")
+    seen: list[tuple] = []
+    client.close = AsyncMock(
+        side_effect=lambda: seen.append(
+            (app.state.search_lock.locked(), app.state.db is old_db, is_connection_retired(app.state.db))
+        )
+    )
+    state = _arm_unverifiable_rollback(old_db, monkeypatch)
+    try:
+        with _ErrorRecords("ERROR") as records:
+            response = await _post_removal(app, "radarr")
+        monkeypatch.undo()
+
+        _assert_normal_removal_response(response)
+        assert state["in_transaction_at_commit"] is True
+        assert seen == [(False, False, False)]
+        assert is_connection_retired(old_db)
+        with pytest.raises(Exception):  # noqa: B017 - any failure to commit proves the connection is unusable
+            await old_db.commit()
+        assert await _still_pending(app.state.db, ids)
+        await insert_search_entry(app.state.db, "Lidarr", "missing", "Unrelated", item_id=1, instance_id="Other")
+        assert await _still_pending(app.state.db, ids)
+        _assert_removal_applied(app, "radarr", client)
+        assert any("closing out its pending searches failed" in r["message"] for r in records)
+        assert all("commit failed" not in r["message"] and "rollback failed" not in r["message"] for r in records)
+    finally:
+        if app.state.db is not old_db:
+            await app.state.db.close()
+
+
+async def _retire_then_fail(db, **_kwargs):
+    await _retire_connection(db)
+    raise RuntimeError("fail after retiring")
+
+
+async def test_remove_instance_close_out_replacement_failure_still_succeeds(multi_instance_app):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    old_db = app.state.db
+    client = _removal_client(app, "radarr")
+    with (
+        _ErrorRecords("ERROR") as records,
+        patch("triggarr.web.routes.close_out_removed_instance_searches", AsyncMock(side_effect=_retire_then_fail)),
+        patch("triggarr.web.routes.replace_retired_connection", AsyncMock(side_effect=OSError("open s3cret"))),
+    ):
+        response = await _post_removal(app, "radarr")
+
+    _assert_normal_removal_response(response)
+    _assert_removal_applied(app, "radarr", client)
+    assert len(records) == 2
+    replacement_errors = [r["message"] for r in records if "could not be replaced" in r["message"]]
+    assert len(replacement_errors) == 1
+    assert "OSError" in replacement_errors[0]
+    assert all("s3cret" not in r["message"] for r in records)
+    assert app.state.db is old_db
+    assert is_connection_retired(old_db)
+
+
+async def test_remove_instance_cancelled_close_out_with_retired_connection_replaces_it_before_reraising(
+    multi_instance_app,
+):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    old_db = app.state.db
+    client = _removal_client(app, "radarr")
+
+    async def retire_then_cancel(db, **_kwargs):
+        await _retire_connection(db)
+        raise asyncio.CancelledError()
+
+    try:
+        with patch(
+            "triggarr.web.routes.close_out_removed_instance_searches", AsyncMock(side_effect=retire_then_cancel)
+        ), pytest.raises(asyncio.CancelledError):
+            await _post_removal(app, "radarr")
+        assert app.state.db is not old_db
+        assert not is_connection_retired(app.state.db)
+        _assert_removal_applied(app, "radarr", client)
+    finally:
+        if app.state.db is not old_db:
+            await app.state.db.close()
+
+
+async def test_remove_instance_without_stable_id_skips_close_out(multi_instance_app):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr", stable_id="")
+    db = app.state.db
+    ids = await _seed_rows(db, "Radarr", None, count=1)
+    _removal_client(app, "radarr")
+    close_out = AsyncMock()
+    with _ErrorRecords("WARNING") as records, patch(
+        "triggarr.web.routes.close_out_removed_instance_searches", close_out
+    ):
+        response = await _post_removal(app, "radarr")
+
+    _assert_normal_removal_response(response)
+    close_out.assert_not_called()
+    assert await _still_pending(db, ids)
+    warnings = [r["message"] for r in records if "no stable ID" in r["message"]]
+    assert len(warnings) == 1
+    assert "radarr" in warnings[0] and "Default" in warnings[0]
+
+
+async def test_remove_instance_close_out_runs_after_synchronous_tidy_up(multi_instance_app):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    _removal_client(app, "radarr")
+    observed: dict = {}
+
+    async def inspect(db, **kwargs):
+        observed.update(
+            in_settings="Default" in app.state.settings.radarr,
+            in_clients="Default" in app.state.radarr_clients,
+            in_state="Default" in app.state.triggarr_state["radarr"],
+            in_cache=("radarr", "Default") in app.state.tag_cache,
+            locked=app.state.search_lock.locked(),
+            kwargs=kwargs,
+        )
+        return 0
+
+    with patch("triggarr.web.routes.close_out_removed_instance_searches", AsyncMock(side_effect=inspect)):
+        await _post_removal(app, "radarr")
+
+    assert observed["in_settings"] is False
+    assert observed["in_clients"] is False
+    assert observed["in_state"] is False
+    assert observed["in_cache"] is False
+    assert observed["locked"] is True
+    assert observed["kwargs"] == {"app": "Radarr", "instance_stable_id": "sid-old", "instance_id": "Default"}
+
+
+async def test_remove_instance_write_failure_leaves_pending_searches_pending(multi_instance_app):
+    app = multi_instance_app
+    _prepare_removal(app, "radarr")
+    db = app.state.db
+    ids = await _seed_rows(db, "Radarr", "sid-old")
+    with patch("triggarr.web.routes._atomic_toml_write", side_effect=OSError("disk full")):
+        async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.post("/api/instance/remove/radarr/Default")
+
+    assert response.status_code != 303
+    assert "Default" in app.state.settings.radarr
+    assert await _still_pending(db, ids)
 
 
 def test_settings_remove_button_targets_row_error_slot(multi_client, multi_instance_app):
