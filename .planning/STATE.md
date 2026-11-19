@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
 status: executing
-stopped_at: Completed 90-05-PLAN.md (close-out wired into instance removal)
-last_updated: "2026-11-19T02:42:19.634Z"
+stopped_at: Completed 90-06-PLAN.md (startup orphan sweep)
+last_updated: "2026-11-19T02:52:06.918Z"
 last_activity: 2026-11-19 -- Phase 90 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 15
-  completed_plans: 12
-  percent: 80
+  completed_plans: 13
+  percent: 87
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 90 (removed-instance-pending-search-lifecycle) — EXECUTING
-Plan: 5 of 8 complete (next: 90-06)
+Plan: 6 of 8 complete (next: 90-07)
 Status: Executing Phase 90
 Last activity: 2026-11-19 -- Phase 90 execution started
 
@@ -173,8 +173,8 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-19T02:42:19.629Z
-Stopped at: Completed 90-05-PLAN.md
+Last session: 2026-11-19T02:52:06.914Z
+Stopped at: Completed 90-06-PLAN.md (startup orphan sweep)
 Resume file: .planning/phases/89-startup-shutdown-resource-cleanup/89-CONTEXT.md
 
 ## Operator Next Steps
