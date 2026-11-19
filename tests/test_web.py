@@ -5074,3 +5074,93 @@ async def test_queued_scheduled_job_still_runs_for_unchanged_instance(multi_inst
     assert cycle_calls[0][2].id == "sid-4k"
     assert len(tracking_calls) == 1
     assert tracking_calls[0][1]["instance_stable_id"] == "sid-4k"
+
+
+def _search_now_queued(app):
+    """Queued work: a manual search of 4K that passes its pre-lock checks and parks on the lock."""
+
+    async def queued(ac):
+        return await ac.post("/api/search-now/radarr/4K")
+
+    return queued
+
+
+@pytest.mark.parametrize(("holder", "status"), _REMOVAL_HOLDERS)
+async def test_queued_manual_search_does_nothing_after_instance_removed(multi_instance_app, holder, status):
+    app = multi_instance_app
+    client_4k = _enable_4k_for_queue_tests(app)
+    pending = await _seed_rows(app.state.db, "Radarr", "sid-4k", name="4K")
+    rows_before = await _rows_for(app.state.db, "sid-4k")
+    stub, cycle_calls = _queue_cycle_stub(app)
+
+    with patch("triggarr.search.scheduler.run_radarr_cycle", new=stub):
+        _holder_response, response = await _run_queued_race(
+            app, holder, _search_now_queued(app), prove_holder=_prove_removal(app, client_4k, pending, status)
+        )
+
+    assert response.status_code == 400
+    assert response.text == "Instance not enabled"
+    assert cycle_calls == []
+    _assert_client_untouched(client_4k)
+    rows = await _rows_for(app.state.db, "sid-4k")
+    assert rows == [(i, "instance_removed") for i, _ in rows_before], "no row may be inserted for the removed instance"
+    assert await _credit_rows_for(app.state.db, "sid-4k") == []
+    assert "radarr_4K" not in app.state.last_search_time
+
+
+async def test_queued_manual_search_is_not_revived_by_same_name_recreation(multi_instance_app):
+    app = multi_instance_app
+    client_4k = _enable_4k_for_queue_tests(app)
+    pending = await _seed_rows(app.state.db, "Radarr", "sid-4k", name="4K")
+    stub, cycle_calls = _queue_cycle_stub(app)
+    new_client = MagicMock()
+    new_client.close = AsyncMock()
+    new_client.get_grab_history = AsyncMock(return_value=[])
+
+    from triggarr.web.routes import close_out_removed_instance_searches as real_close_out
+
+    async def close_out_then_recreate(*args, **kwargs):
+        result = await real_close_out(*args, **kwargs)
+        app.state.settings.radarr["4K"] = InstanceConfig(
+            url="http://radarr4k:7878", api_key="radarr-4k-key", enabled=True, id="sid-4k-new",
+            missing_tag="wanted-4k",
+        )
+        app.state.radarr_clients["4K"] = new_client
+        return result
+
+    async def prove(response):
+        assert response.status_code == 303
+        assert app.state.settings.radarr["4K"].id == "sid-4k-new"
+        for outcome, _d, _r in await _row_states(app.state.db, pending):
+            assert outcome == "instance_removed"
+
+    with (
+        patch("triggarr.search.scheduler.run_radarr_cycle", new=stub),
+        patch("triggarr.web.routes.close_out_removed_instance_searches", new=close_out_then_recreate),
+    ):
+        _holder_response, response = await _run_queued_race(
+            app, _remove_action_holder, _search_now_queued(app), prove_holder=prove
+        )
+
+    assert response.status_code == 400
+    assert cycle_calls == []
+    _assert_client_untouched(client_4k)
+    _assert_client_untouched(new_client)
+    assert await _rows_for(app.state.db, "sid-4k-new") == []
+    assert [r for r in await _rows_for(app.state.db, "sid-4k") if r[1] in ("searched", "partial")] == []
+
+
+async def test_queued_manual_search_still_runs_for_unchanged_instance(multi_instance_app):
+    app = multi_instance_app
+    client_4k = _enable_4k_for_queue_tests(app)
+    stub, cycle_calls = _queue_cycle_stub(app)
+
+    with patch("triggarr.search.scheduler.run_radarr_cycle", new=stub):
+        _holder_response, response = await _run_queued_race(
+            app, _save_unchanged_holder, _search_now_queued(app), prove_holder=_prove_unchanged(app, client_4k)
+        )
+
+    assert response.status_code == 200
+    assert len(cycle_calls) == 1
+    assert cycle_calls[0][0] is client_4k
+    assert cycle_calls[0][2].id == "sid-4k"
