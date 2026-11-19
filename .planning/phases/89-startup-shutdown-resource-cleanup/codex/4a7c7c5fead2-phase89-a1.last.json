@@ -1,0 +1,128 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "4a7c7c5fead209a727568d2db89ded174759f96d",
+  "inspected_base_sha": "b4a25aa1b033d6168a4d6482979a4638330891a3",
+  "pr_url": "none",
+  "scope": "Phase 89 startup/shutdown resource cleanup, including the complete scoped code/test diff and both changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. Cleanup failure isolation, cancellation propagation, scheduler stopping, bounded waits and sanitized exception retrieval are supported by targeted regression tests. Harness evidence records 3381 passed and 1 skipped at the inspected head.",
+  "coverage": [
+    "Full changes to triggarr/search/scheduler.py and tests/test_scheduler.py.",
+    "Complete 89-01-PLAN.md and 89-02-PLAN.md, including executor instructions, acceptance gates and threat models.",
+    "Startup failures during migration, cutover, client construction and partial scheduler startup.",
+    "Shutdown failure, timeout, cancellation, abandoned-task ownership and late exception retrieval.",
+    "Test assertions and observation-before-rescue ordering.",
+    "Relevant application entry point, client lifecycle, configuration replacement, search locking and installed dependency cleanup implementations.",
+    "Security-sensitive logging and policy changes; no CI or publication-policy weakening identified."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than changed *-PLAN.md files."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e b4a25aa1b033d6168a4d6482979a4638330891a3",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff b4a25aa1b033d6168a4d6482979a4638330891a3..4a7c7c5fead209a727568d2db89ded174759f96d -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff; truncated portions subsequently inspected in smaller reads."
+    },
+    {
+      "command": "git diff b4a25aa1b033d6168a4d6482979a4638330891a3..4a7c7c5fead209a727568d2db89ded174759f96d -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Identify changed plan contents; subsequently read both plans in full."
+    },
+    {
+      "command": "git diff --stat b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD; git status --short; cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect scope, working tree and harness evidence."
+    },
+    {
+      "command": "git diff b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD -- triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect production changes."
+    },
+    {
+      "command": "sed -n '650,1045p' triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Trace lifespan setup and cleanup."
+    },
+    {
+      "command": "sed -n '1,145p' .planning/phases/89-startup-shutdown-resource-cleanup/89-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review first plan."
+    },
+    {
+      "command": "sed -n '146,279p' .planning/phases/89-startup-shutdown-resource-cleanup/89-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete first plan review."
+    },
+    {
+      "command": "sed -n '2670,3040p' tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect observation/rescue helpers and shutdown tests."
+    },
+    {
+      "command": "sed -n '3041,3475p' tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect startup and cancellation regression tests."
+    },
+    {
+      "command": "rg --files --hidden -g 'core.py' -g 'python*' -g 'AGENTS.md' -g '!\\.git/**' -g 'pyproject.toml'; sed -n '1,135p' .planning/phases/89-startup-shutdown-resource-cleanup/89-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Locate local context and review second plan."
+    },
+    {
+      "command": "sed -n '136,269p' .planning/phases/89-startup-shutdown-resource-cleanup/89-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete second plan review."
+    },
+    {
+      "command": "sed -n '1,48p' .planning/phases/89-startup-shutdown-resource-cleanup/89-01-PLAN.md; sed -n '1,125p' triggarr/search/scheduler.py; sed -n '250,465p' triggarr/search/scheduler.py; sed -n '1000,1045p' triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Resolve truncated output and inspect surrounding search/error handling."
+    },
+    {
+      "command": "sed -n '1,75p' triggarr/clients/base.py; sed -n '295,320p' triggarr/clients/base.py; rg -n 'create_lifespan|uvicorn|clients.*=|await.*close' triggarr/__main__.py triggarr/web/routes.py; cat pyproject.toml; ls -d .venv",
+      "exit_code": 0,
+      "purpose": "Inspect lifecycle callers, sanitizer and runtime configuration."
+    },
+    {
+      "command": "ls -ld .venv; git diff --name-only b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; sed -n '2350,2670p' tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Confirm scoped file inventory and inspect all helper tests."
+    },
+    {
+      "command": "ls -l .venv/bin/python .venv/lib; sed -n '100,220p' .venv/lib/python3.13/site-packages/aiosqlite/core.py; sed -n '1,90p' .venv/lib/python3.13/site-packages/apscheduler/schedulers/asyncio.py; sed -n '38,90p' triggarr/__main__.py; sed -n '730,810p' triggarr/web/routes.py; sed -n '850,870p' triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Verify dependency cleanup semantics and application/configuration lifecycle."
+    },
+    {
+      "command": "git diff -w --unified=3 b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD -- triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Verify all substantive changes independently of setup reindentation."
+    },
+    {
+      "command": "sed -n '48,60p' .planning/phases/89-startup-shutdown-resource-cleanup/89-01-PLAN.md; sed -n '1945,1982p' tests/test_scheduler.py; sed -n '175,250p' triggarr/search/scheduler.py; git diff --check b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD; git rev-parse HEAD; git status --short",
+      "exit_code": 0,
+      "purpose": "Finish surrounding-code checks, validate diff whitespace and reconfirm unchanged head."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest: the sandbox is read-only, and the virtualenv interpreter points outside the permitted working copy. Test results are attributed to the supplied harness evidence.",
+    "No live server, external arr service or process-signal integration test was performed.",
+    "The documented inability to interrupt an OS thread blocked inside SQLite remains; the cleanup timeout bounds waiting, not guaranteed process exit."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
