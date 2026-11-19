@@ -328,7 +328,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 - [x] 90-07-PLAN.md — a scheduled or manual search that was waiting to run when its instance was removed, or replaced under the same name, is turned away (RMINST-01, RMINST-02, RMINST-03)
 
 **Wave 8** *(blocked on Wave 7: 90-07)*
-- [ ] 90-08-PLAN.md — end-to-end lifecycle tests for Sonarr, Radarr and Lidarr, same-name stats verification, requirement and roadmap wording for all three apps, backlog records (RMINST-01, RMINST-02, RMINST-03, RMINST-04)
+- [x] 90-08-PLAN.md — end-to-end lifecycle tests for Sonarr, Radarr and Lidarr, same-name stats verification, requirement and roadmap wording for all three apps, backlog records (RMINST-01, RMINST-02, RMINST-03, RMINST-04)
 
 ### Phase 91: Search-Command Delivery Confidence
 **Goal**: A search command is retried only when it's actually safe, and a command whose outcome is unknown is tracked honestly instead of counted as success or failure.
