@@ -24,7 +24,7 @@ import aiosqlite
 import httpx
 import jinja2
 import pydantic
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -47,7 +47,14 @@ from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.config import _atomic_toml_write, _settings_to_dict, load_settings, new_instance_id
-from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
+from triggarr.db import (
+    close_out_removed_instance_searches,
+    get_dashboard_stats,
+    get_recent_searches,
+    get_search_history,
+    is_connection_retired,
+    replace_retired_connection,
+)
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
 from triggarr.models.config import APP_TYPES, AuthConfig, InstanceConfig
@@ -1040,6 +1047,53 @@ async def _close_removed_client(client: ArrClient) -> tuple[Exception | None, as
     return error, cancelled
 
 
+async def _replace_retired_db(app: FastAPI) -> asyncio.CancelledError | None:
+    """Swap a clean connection into ``app.state.db`` when the current one was retired.
+
+    A close-out whose rollback could not be verified leaves the shared
+    connection retired: closed, and unable to commit anything again. The
+    caller must hold ``search_lock``. Routes and background jobs read
+    ``app.state.db`` when they run, and they wait on that lock, so replacing
+    the connection before the lock is released means none of them can run on
+    the retired one. In the normal case the connection is healthy and this
+    returns at once without awaiting anything.
+
+    The replacement is opened as its own task and waited for through a shield,
+    like _close_removed_client, so a cancellation received meanwhile cannot
+    abandon a half-opened connection; the first one is returned for the caller
+    to re-raise. A failure to replace is logged (exception type only) and
+    otherwise ignored: the retired connection stays in place, every later
+    database call on it fails instead of committing, and a restart recovers.
+    """
+    if not is_connection_retired(app.state.db):
+        return None
+    opening = asyncio.ensure_future(replace_retired_connection(app.state.db))
+    cancelled: asyncio.CancelledError | None = None
+    while not opening.done():
+        try:
+            await asyncio.shield(opening)
+        except asyncio.CancelledError as exc:
+            if cancelled is None:
+                cancelled = exc
+        except Exception:
+            pass  # the open's own error: read from opening below
+    if opening.cancelled():
+        error: BaseException | None = RuntimeError("opening the replacement was cancelled")
+    else:
+        error = opening.exception()
+    if error is None:
+        app.state.db = opening.result()
+    elif isinstance(error, Exception):
+        logger.error(
+            "The database connection was retired after a failed rollback and could not be replaced: {exc}; "
+            "database access fails until Triggarr is restarted",
+            exc=_sanitize_exc(error),
+        )
+    else:
+        raise error
+    return cancelled
+
+
 @router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
 async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
@@ -1049,7 +1103,7 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
     cannot resurrect it from a stale snapshot. Builds the post-removal
     settings, writes it to disk, and only after the write succeeds swaps
     live settings in and cleans up the scheduler job, client connection,
-    state entry and tag cache.
+    state entry and tag cache, then closes out the instance's pending searches.
     """
     if app_name not in APP_TYPES:
         return HTMLResponse("Invalid app type", status_code=400)
@@ -1072,6 +1126,10 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
                 # CSP nonce, SEC-01). Nothing is echoed back.
                 return HTMLResponse("", headers={"HX-Redirect": str(request.url_for("settings_page"))})
             return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
+
+        # Read from server-side settings before the instance is dropped; never
+        # taken from the request.
+        removed_stable_id = instances[instance_name].id
 
         # Build the post-removal settings without touching live state yet.
         # No re-validation via SettingsModel(**config_dict) is needed here
@@ -1227,6 +1285,52 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
 
         # RES-03 (Pitfall 5): clear the tag cache entry for the removed instance.
         request.app.state.tag_cache.pop((app_name, instance_name), None)
+
+        # Give the removed instance's pending searches their final outcome.
+        # This runs only after the settings write succeeded, makes no call to
+        # the server being removed and no final grab check, and is the last
+        # step inside the lock: the synchronous tidy-up above can never be
+        # skipped by a cancellation, and no tracking or search cycle (both
+        # hold search_lock) can run between the removal and this close-out.
+        # The database function finishes and verifies its rollback before it
+        # lets a failure or cancellation through, so the lock is still held
+        # until the connection is outside any transaction, or retired and
+        # replaced below. A close-out that failed or was interrupted is
+        # repaired by the startup check.
+        if not removed_stable_id:
+            logger.warning(
+                "Removed {app}/{inst} but it has no stable ID; its pending searches were not closed out",
+                app=app_name,
+                inst=instance_name,
+            )
+        else:
+            try:
+                await close_out_removed_instance_searches(
+                    request.app.state.db,
+                    app=app_name.title(),
+                    instance_stable_id=removed_stable_id,
+                    instance_id=instance_name,
+                )
+            except asyncio.CancelledError as exc:
+                if cancelled is None:
+                    cancelled = exc
+            except Exception as exc:  # error boundary for post-commit cleanup (D-15, D-16)
+                # Only the exception type is logged: its text can hold a URL
+                # with credentials or the removed instance's API key, which the
+                # log sink no longer knows.
+                logger.error(
+                    "Removed {app}/{inst} but closing out its pending searches failed: {exc}",
+                    app=app_name,
+                    inst=instance_name,
+                    exc=_sanitize_exc(exc),
+                )
+            # A close-out whose rollback could not be verified leaves the
+            # connection retired; replace it before the lock is released so
+            # nothing waiting on the lock runs on it. In the normal case this
+            # is a synchronous check.
+            replace_cancel = await _replace_retired_db(request.app)
+            if cancelled is None:
+                cancelled = replace_cancel
 
     # Close stale client outside the lock (TCP teardown doesn't need lock
     # protection). Its failure is logged, not raised: a close failure must not

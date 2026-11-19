@@ -2335,7 +2335,11 @@ async def test_remove_instance_refused_thread_start_with_write_already_running_r
     # Not a failed removal: no error entry. The refused thread start is still
     # on record, as one warning naming the app and the instance.
     assert [r["message"] for r in records if r["level"].name == "ERROR"] == []
-    warnings = [r["message"] for r in records if r["level"].name == "WARNING"]
+    # (The fixture's instance has no stable ID, so the removal also logs the
+    # separate "no stable ID" warning; that one is not what this test pins.)
+    warnings = [
+        r["message"] for r in records if r["level"].name == "WARNING" and "no stable ID" not in r["message"]
+    ]
     assert len(warnings) == 1
     assert "radarr" in warnings[0]
     assert "4K" in warnings[0]
