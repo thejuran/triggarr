@@ -3542,18 +3542,22 @@ async def _set_detail(db, row_id: int, detail: str | None) -> None:
 
 
 async def test_close_out_instance_removed_keeps_existing_detail(tmp_path):
-    """WR-01: a partial row keeps its grab count; empty or NULL detail gets the plain note."""
+    """WR-01: only a partial row keeps its grab count; every other row gets the plain note.
+
+    ids[3] is shaped like a production searched row (detail "search triggered").
+    """
     db, _ = await _init_test_db(tmp_path)
-    ids = await _seed_pending(db, app="Sonarr", count=3)
+    ids = await _seed_pending(db, app="Sonarr", count=4)
     await _set_detail(db, ids[1], "partial: 2/5 episodes")
     await _set_detail(db, ids[2], None)
+    await _set_detail(db, ids[3], "search triggered")
     assert await close_out_removed_instance_searches(
         db, app="Sonarr", instance_stable_id="sid-old", instance_id="Main",
-    ) == 3
+    ) == 4
     rows = await _rows(db, ids)
-    assert [r[1] for r in rows] == [OUTCOME_INSTANCE_REMOVED] * 3
+    assert [r[1] for r in rows] == [OUTCOME_INSTANCE_REMOVED] * 4
     assert [r[2] for r in rows] == [
-        "instance removed", "partial: 2/5 episodes (instance removed)", "instance removed",
+        "instance removed", "partial: 2/5 episodes (instance removed)", "instance removed", "instance removed",
     ]
     await db.close()
 
@@ -4016,20 +4020,25 @@ async def test_orphan_sweep_repairs_failed_close_out_of_last_instance(tmp_path, 
 
 
 async def test_orphan_sweep_keeps_existing_detail(tmp_path):
-    """WR-01: a partial row keeps its grab count; empty or NULL detail gets the plain note."""
+    """WR-01: only a partial row keeps its grab count; every other row gets the plain note.
+
+    ids[3] is shaped like a production searched row (detail "search triggered").
+    """
     db, _ = await _init_test_db(tmp_path)
     ids = [
         await _add_row(db, "Sonarr", "sid-gone", "empty"),
         await _add_row(db, "Sonarr", "sid-gone", "partial", outcome="partial"),
         await _add_row(db, "Sonarr", None, "null"),
+        await _add_row(db, "Sonarr", "sid-gone", "triggered"),
     ]
     await _set_detail(db, ids[1], "partial: 2/5 episodes")
     await _set_detail(db, ids[2], None)
-    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 3
+    await _set_detail(db, ids[3], "search triggered")
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 4
     rows = await _rows(db, ids)
-    assert [r[1] for r in rows] == [OUTCOME_INSTANCE_REMOVED] * 3
+    assert [r[1] for r in rows] == [OUTCOME_INSTANCE_REMOVED] * 4
     assert [r[2] for r in rows] == [
-        "instance removed", "partial: 2/5 episodes (instance removed)", "instance removed",
+        "instance removed", "partial: 2/5 episodes (instance removed)", "instance removed", "instance removed",
     ]
     await db.close()
 

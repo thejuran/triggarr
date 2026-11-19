@@ -1551,10 +1551,16 @@ async def replace_retired_connection(db: aiosqlite.Connection) -> aiosqlite.Conn
     return new_db
 
 
-# Close-out keeps an existing detail (e.g. a Sonarr "partial: 2/5 episodes" grab
-# count) and appends the removal note; empty or NULL detail gets the plain note.
+# Close-out keeps an existing detail only on a 'partial' row (a Sonarr
+# "partial: 2/5 episodes" grab count) and appends the removal note. Every other
+# row, including a 'searched' row carrying the engine's "search triggered" and
+# rows with empty or NULL detail, gets the plain note. In an UPDATE, ``outcome``
+# on the right-hand side is the row's value before this SET is applied.
 # Takes two bound parameters, both INSTANCE_REMOVED_DETAIL.
-_CLOSE_OUT_DETAIL_SQL = "detail = CASE WHEN detail IS NULL OR detail = '' THEN ? ELSE detail || ' (' || ? || ')' END"
+_CLOSE_OUT_DETAIL_SQL = (
+    "detail = CASE WHEN outcome = 'partial' AND detail IS NOT NULL AND detail != '' "
+    "THEN detail || ' (' || ? || ')' ELSE ? END"
+)
 
 
 async def close_out_removed_instance_searches(
