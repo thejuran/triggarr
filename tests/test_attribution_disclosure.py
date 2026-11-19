@@ -623,3 +623,46 @@ async def test_history_instance_removed_row_keeps_instance_name_and_is_not_in_pr
     fragment = _results_fragment(response.text)
     assert len(re.findall(r">\s*Main\s*<", fragment)) == 2
     assert len(re.findall(r">\s*Instance removed\s*<", fragment)) == 1
+
+
+async def test_activity_rail_instance_removed_row_shows_pill_and_tooltip(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Radarr", "missing", "Gone Movie", outcome=OUTCOME_INSTANCE_REMOVED)
+    with TestClient(app) as client:
+        response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    text = response.text
+    assert _renders_text(text, "Instance removed")
+    assert REMOVED_TOOLTIP in text
+    assert "instance_removed" not in text
+    assert not _renders_text(text, "searched")
+    assert "Legacy — tracking discontinued" not in text
+
+
+async def test_activity_rail_instance_removed_pill_uses_legacy_gray(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Radarr", "missing", "Gone Movie", outcome=OUTCOME_INSTANCE_REMOVED)
+    with TestClient(app) as client:
+        response = client.get("/partials/activity-rail")
+    span = _removed_span(response.text)
+    assert "bg-gray-500/10 text-gray-500 border border-gray-500/20" in span
+
+
+async def test_activity_rail_legacy_and_instance_removed_never_conflated(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Closed Show", outcome=OUTCOME_INSTANCE_REMOVED)
+    await ensure_cutover_recorded(db, {})
+    with TestClient(app) as client:
+        response = client.get("/partials/activity-rail")
+    text = response.text
+    assert text.count("Legacy — tracking discontinued") == 1
+    assert len(re.findall(r">\s*Instance removed\s*<", text)) == 1
+
+
+async def test_activity_rail_instance_removed_uses_dashed_card(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Radarr", "missing", "Gone Movie", outcome=OUTCOME_INSTANCE_REMOVED)
+    with TestClient(app) as client:
+        response = client.get("/partials/activity-rail")
+    assert "border-dashed" in response.text
