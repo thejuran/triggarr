@@ -19,6 +19,7 @@ from loguru import logger
 from tests.migration_faults import STANDARD_MAPPING, original_projection, seed_v9_db, snapshot
 from triggarr.db import (
     MIGRATIONS,
+    OUTCOME_INSTANCE_REMOVED,
     OwnedGrab,
     OwnedGrabRecord,
     PendingCapExceeded,
@@ -3220,4 +3221,129 @@ async def test_pending_predicate_null_outcome_never_pruned(tmp_path):
             db, "Radarr", "missing", f"Done {i}", outcome="failed", instance_id="Main", max_rows=3,
         )
     assert null_ids[0] in await _ids(db)
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Instance removed outcome (Phase 90)
+# ---------------------------------------------------------------------------
+
+
+async def _insert_removed_rows(db, count: int, *, app: str = "Radarr", stable_id: str = "sid-a") -> list[int]:
+    for i in range(count):
+        await insert_search_entry(
+            db, app, "missing", f"Removed {i}", item_id=100 + i, instance_id="Main",
+            instance_stable_id=stable_id, max_rows=100,
+        )
+    ids = await _ids(db, "app = ?", (app,))
+    await _set_outcome(db, ids, OUTCOME_INSTANCE_REMOVED)
+    return ids
+
+
+async def test_instance_removed_rows_left_out_of_grab_rate(tmp_path):
+    """Closed rows leave both the numerator and the denominator, per app and overall."""
+    db, _ = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Radarr", "missing", "Hit", outcome="grabbed", instance_id="Main", instance_stable_id="sid-a",
+    )
+    await _insert_removed_rows(db, 3)  # also flips the grabbed row; restore it
+    await db.execute("UPDATE search_history SET outcome = 'grabbed' WHERE item_name = 'Hit'")
+    await db.commit()
+    scoped = await get_dashboard_stats(db, app="Radarr", instance_stable_id="sid-a")
+    overall = await get_dashboard_stats(db)
+    assert scoped["radarr_rate"] == 100.0
+    assert scoped["overall_rate"] == 100.0
+    assert overall["radarr_rate"] == 100.0
+    assert overall["overall_rate"] == 100.0
+    await db.close()
+
+
+async def test_instance_removed_only_rows_give_no_grab_rate(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    await _insert_removed_rows(db, 3)
+    stats = await get_dashboard_stats(db)
+    assert stats["radarr_rate"] is None
+    assert stats["overall_rate"] is None
+    await db.close()
+
+
+async def test_instance_removed_row_does_not_set_historical_rate_flag(tmp_path):
+    """A pre-cutover Sonarr row closed as instance_removed does not trip the historical label."""
+    db, _ = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Old", item_id=1, instance_id="Main", instance_stable_id="sid-s",
+    )
+    ids = await _ids(db)
+    await _insert_cutover(db, max(ids))
+    await _set_outcome(db, ids, OUTCOME_INSTANCE_REMOVED)
+    stats = await get_dashboard_stats(db)
+    assert stats["overall_rate_includes_historical"] is False
+    assert stats["sonarr_rate_includes_historical"] is False
+    await db.close()
+
+
+async def test_instance_removed_rows_do_not_count_toward_pending_cap(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    for i in range(2):
+        await insert_search_entry(
+            db, "Radarr", "missing", f"Movie {i}", item_id=i, instance_id="Main",
+            instance_stable_id="sid-a", max_rows=1,
+        )
+    await _set_outcome(db, await _ids(db), OUTCOME_INSTANCE_REMOVED)
+    await insert_search_entry(
+        db, "Radarr", "missing", "New", item_id=9, instance_id="Main", instance_stable_id="sid-a", max_rows=1,
+    )
+    assert "New" in [r["name"] for r in await get_recent_searches(db)]
+    await db.close()
+
+
+async def test_instance_removed_rows_are_not_trackable(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    await _insert_removed_rows(db, 2)
+    assert await get_trackable_entries(db) == []
+    assert await get_trackable_entries(db, instance_stable_id="sid-a") == []
+    assert await get_trackable_entries(db, instance_id="Main") == []
+    await db.close()
+
+
+async def test_instance_removed_rows_age_out_with_finished_rows(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Pending", item_id=1, instance_id="Main", max_rows=2)
+    await insert_search_entry(
+        db, "Radarr", "missing", "Closed", outcome=OUTCOME_INSTANCE_REMOVED, instance_id="Main", max_rows=2,
+    )
+    closed_id = (await _ids(db, "item_name = 'Closed'"))[0]
+    pending_id = (await _ids(db, "item_name = 'Pending'"))[0]
+    for i in range(3):
+        await insert_search_entry(
+            db, "Radarr", "missing", f"Done {i}", outcome="failed", instance_id="Main", max_rows=2,
+        )
+    remaining = await _ids(db)
+    assert closed_id not in remaining
+    assert pending_id in remaining
+    await db.close()
+
+
+async def test_instance_removed_row_is_never_legacy(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Closed", item_id=1, instance_id="Main", instance_stable_id="s")
+    await insert_search_entry(db, "Sonarr", "missing", "Frozen", item_id=2, instance_id="Main", instance_stable_id="s")
+    ids = await _ids(db)
+    await _insert_cutover(db, max(ids))
+    await _set_outcome(db, [ids[0]], OUTCOME_INSTANCE_REMOVED)
+    history = {e["name"]: e["is_legacy"] for e in (await get_search_history(db))["entries"]}
+    recent = {e["name"]: e["is_legacy"] for e in await get_recent_searches(db)}
+    assert history == {"Closed": False, "Frozen": True}
+    assert recent == {"Closed": False, "Frozen": True}
+    await db.close()
+
+
+async def test_instance_removed_outcome_filter_returns_only_those_rows(tmp_path):
+    db, _ = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Open", item_id=1, instance_id="Main")
+    await insert_search_entry(
+        db, "Radarr", "missing", "Closed", outcome=OUTCOME_INSTANCE_REMOVED, item_id=2, instance_id="Main",
+    )
+    result = await get_search_history(db, outcome_filter=["instance_removed"])
+    assert [e["name"] for e in result["entries"]] == ["Closed"]
     await db.close()
