@@ -119,3 +119,24 @@ Add a test that closes a `partial` row with `detail = 'partial: 2/5 episodes'` a
 _Reviewed: 2026-11-18_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
+
+## Dispositions (2026-11-19, after the paired Codex pass and the required vibe-check)
+
+Applied in fix round 1 (all on the phase branch; full suite 3520 passed, 1 skipped; ruff clean):
+
+- **WR-01:** fixed in `3aa2cad6`. Both close-out UPDATEs keep an existing detail and append the removal note (`partial: 2/5 episodes (instance removed)`); tests for both functions.
+- **IN-04:** fixed in `3e778629` (docstring now states decision A1).
+- **IN-03:** not changed. The four wait-loop copies have different cancellation semantics; owner chose to document and unify later as its own task (backlog entry in `.planning/backlog/MAINTENANCE.md`, commit `edf393e4`).
+- **IN-01, IN-02:** accepted as documented; no change.
+
+Owner rulings:
+
+- **SA-01:** D-06 stands as written. Part-done searches of a removed instance end as "Instance removed" and leave grab rate; lifetime totals keep the grabs.
+- **SA-02:** dismissed. Instance ids are Triggarr-managed; hand-removing or hand-changing them is unsupported (also decided on the vibe-check card, pass 3).
+- **A1 (imported `state.json` rows closed as "Instance removed"):** kept as decided.
+- **Upgrade visibility (vibe-check impact lane):** log per-app counts before the startup sweep writes (`1744f43a`) and state the one-time relabel in the release notes. No pre-sweep backup.
+
+Other review sources at this checkpoint:
+
+- **Codex (contract pass, head `669280d4`, attempt 1, complete):** F001 (a 90-06 plan acceptance check counted the comment it requires) — the plan check now excludes comment lines.
+- **Vibe-check (required at high risk, deep review passes 1-3 on `669280d4` → `1a9039bd`):** NULL-outcome normalization fixed in `1a9039bd` and confirmed by an independent re-check; wait-loop duplication deferred; config-id item dismissed (above).
