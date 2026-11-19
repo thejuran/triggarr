@@ -4034,6 +4034,29 @@ async def test_orphan_sweep_keeps_existing_detail(tmp_path):
     await db.close()
 
 
+async def test_orphan_sweep_logs_per_app_counts_before_closing(tmp_path, log_lines):
+    """One INFO line per app with orphans, counts only, logged before any row is written."""
+    db, _ = await _init_test_db(tmp_path)
+    await _add_row(db, "Radarr", "sid-gone", "r a")
+    await _add_row(db, "Radarr", "sid-gone", "r b")
+    await _add_row(db, "Radarr", None, "r null")
+    await _add_row(db, "Lidarr", "sid-gone2", "l a")
+    await _add_row(db, "Sonarr", "sid-s", "configured")
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 4
+    per_app = [m for level, m in log_lines if level == "INFO" and "as Instance removed" in m]
+    assert sorted(per_app) == [
+        "Startup: closing 1 pending search(es) of Lidarr as Instance removed (no configured instance owns them)",
+        "Startup: closing 3 pending search(es) of Radarr as Instance removed (no configured instance owns them)",
+    ]
+    messages = [m for _level, m in log_lines]
+    first_write = next(i for i, m in enumerate(messages) if m.startswith("Orphan sweep: closed"))
+    assert all(messages.index(m) < first_write for m in per_app)
+    log_lines.clear()
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 0
+    assert not [m for _level, m in log_lines if "as Instance removed" in m]
+    await db.close()
+
+
 async def test_orphan_sweep_logs_one_total_line(tmp_path, log_lines):
     db, _ = await _init_test_db(tmp_path)
     for i in range(6):

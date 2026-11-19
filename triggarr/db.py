@@ -1637,10 +1637,21 @@ async def close_out_orphaned_pending_searches(
             "SELECT app, instance_stable_id, COUNT(*) FROM search_history "  # noqa: S608
             f"WHERE {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL} GROUP BY app, instance_stable_id",
         ) as cursor:
-            groups = [(r[0], r[1]) for r in await cursor.fetchall()]
-        for app, stable_id in groups:
+            groups = [(r[0], r[1], r[2]) for r in await cursor.fetchall()]
+        orphans: list[tuple[str, str | None]] = []
+        per_app: dict[str, int] = {}
+        for app, stable_id, count in groups:
             if stable_id and (app, stable_id) in configured_pairs:
                 continue
+            orphans.append((app, stable_id))
+            per_app[app] = per_app.get(app, 0) + count
+        for app, count in per_app.items():
+            logger.info(
+                "Startup: closing {n} pending search(es) of {app} as Instance removed "
+                "(no configured instance owns them)",
+                n=count, app=app,
+            )
+        for app, stable_id in orphans:
             update = await db.execute(
                 f"UPDATE search_history SET outcome = ?, {_CLOSE_OUT_DETAIL_SQL}, resolved_at = ? "  # noqa: S608
                 f"WHERE app = ? AND instance_stable_id IS ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",
