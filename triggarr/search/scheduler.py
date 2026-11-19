@@ -44,7 +44,13 @@ from triggarr.clients.base import ArrClient, Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.db import init_db, migrate_from_state
+from triggarr.db import (
+    close_out_orphaned_pending_searches,
+    init_db,
+    is_connection_retired,
+    migrate_from_state,
+    replace_retired_connection,
+)
 from triggarr.models.config import APP_TYPES, InstanceConfig, Settings
 from triggarr.search.engine import (
     _sanitize_exc,
@@ -726,6 +732,44 @@ def create_lifespan(
             # migration does, so pre-cutover pending rows are never tracked
             # under the new ownership rules.
             await ensure_cutover_recorded(db, {name: cfg.id for name, cfg in settings.sonarr.items()})
+
+            # Close pending searches that no configured instance owns: searches
+            # left by instances removed before this release, and by a removal
+            # whose close-out failed after the settings write. Must run after
+            # the cutover is recorded (before that nothing counts as Legacy and
+            # pre-cutover Sonarr rows would be rewritten). The set covers every
+            # configured instance, disabled ones included (never
+            # get_enabled_instances), so a disabled instance keeps its pending
+            # searches. It runs for a configuration with zero instances too: a
+            # missing or invalid configuration never reaches the lifespan
+            # (ensure_config exits first). Deliberately non-fatal, unlike the
+            # cutover: a row is only ever selected under its own stable ID, so
+            # an orphan row is not checked or credited by any configured
+            # instance, and the next start repeats the sweep. CancelledError is
+            # not caught and reaches the failed-startup cleanup. After a
+            # failure the connection is either verified clean or replaced
+            # before startup continues.
+            configured_instance_ids = {
+                (app_type.title(), cfg.id)
+                for app_type in APP_TYPES
+                for cfg in getattr(settings, app_type).values()
+                if cfg.id
+            }
+            try:
+                await close_out_orphaned_pending_searches(db, configured=configured_instance_ids)
+            except Exception as sweep_exc:
+                logger.error(
+                    "Startup: could not close out orphaned pending searches ({exc}); "
+                    "startup continues and the check runs again at the next start",
+                    exc=_sanitize_exc(sweep_exc),
+                )
+                # A sweep whose rollback could not be verified leaves the
+                # connection closed so its abandoned changes can never be
+                # committed; continue on a clean connection to the same file.
+                # An error here is not caught on purpose: without a usable
+                # database, startup must stop through the cleanup below.
+                if is_connection_retired(db):
+                    db = await replace_retired_connection(db)
 
             # --- Create long-lived clients for enabled instances ---
             client_classes: dict[str, type[ArrClient]] = {

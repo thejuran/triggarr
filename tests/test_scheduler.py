@@ -2109,9 +2109,11 @@ async def _sweep_seed(db_path: Path, rows: list[tuple[str, str, str | None]], *,
 
 
 async def _sweep_rows(db_path: Path) -> dict[str, tuple[str, str | None]]:
-    async with aiosqlite.connect(db_path) as db:
-        async with db.execute("SELECT item_name, outcome, resolved_at FROM search_history") as cur:
-            return {r[0]: (r[1], r[2]) for r in await cur.fetchall()}
+    async with (
+        aiosqlite.connect(db_path) as db,
+        db.execute("SELECT item_name, outcome, resolved_at FROM search_history") as cur,
+    ):
+        return {r[0]: (r[1], r[2]) for r in await cur.fetchall()}
 
 
 async def _sweep_run_once(settings: Settings, tmp_path: Path, probe=None):
@@ -2539,7 +2541,9 @@ async def test_lifespan_imported_sonarr_rows_are_legacy_and_disclosed(tmp_path):
 async def test_lifespan_imported_rows_keep_outcomes_and_stay_unassociated(tmp_path):
     """Imported rows keep their stored outcomes and are never associated with a configured instance's stable ID."""
     snap = await _lifespan_snapshot_with_legacy_search_log(tmp_path)
-    assert [r["outcome"] for r in snap["rows"]] == ["searched", "searched", "searched"]
+    # The imported Radarr row has no stable ID and no configured Radarr instance, so
+    # the startup sweep closes it; the Legacy Sonarr rows keep their outcomes.
+    assert [r["outcome"] for r in snap["rows"]] == ["searched", "searched", "instance_removed"]
     assert all(r["instance_stable_id"] is None for r in snap["rows"])
     assert all(r["instance_id"] == "Default" for r in snap["rows"])
     assert snap["main_view"]["show_cutover_note"] is False
@@ -2592,11 +2596,13 @@ async def test_lifespan_imported_legacy_rows_stay_out_of_grab_rate_denominators(
 
     imported, after_unresolved, after_new = await _run_lifespan(settings, state_path, config_path, probe)
     assert imported["sonarr_rate"] is None
-    assert imported["radarr_rate"] == 0.0
-    assert imported["overall_rate"] == 0.0
+    # The imported Radarr row is closed by the startup sweep (no configured Radarr
+    # instance owns it), so it no longer counts against any rate.
+    assert imported["radarr_rate"] is None
+    assert imported["overall_rate"] is None
     assert after_unresolved["sonarr_rate"] == 0.0
     assert after_new["sonarr_rate"] == 50.0
-    assert after_new["overall_rate"] == pytest.approx(100 / 3)
+    assert after_new["overall_rate"] == pytest.approx(50.0)
 
 
 async def test_lifespan_restart_after_legacy_import_neither_reimports_nor_moves_cutover(tmp_path):
