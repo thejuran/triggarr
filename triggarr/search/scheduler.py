@@ -471,12 +471,14 @@ def _on_job_error(event) -> None:
 _ABANDONED_CLOSE_TASKS: set[asyncio.Task] = set()
 
 
-def _observe_abandoned_close(context: str, label: str, task: asyncio.Task) -> None:
+def _observe_abandoned_close(context: str, label: str, reason: str, task: asyncio.Task) -> None:
     """Done-callback for an abandoned close task: release it and log its outcome.
 
-    Logged at DEBUG: the step was already reported once at WARNING when the cap
-    fired. Retrieving the exception here also prevents asyncio's "Task exception
-    was never retrieved" report. Never logs ``str(exc)``.
+    ``reason`` says why the close was abandoned: "the cap" when the wait timed
+    out, or "the caller was cancelled" when ``_safe_close`` itself was cancelled.
+    Logged at DEBUG: a timed-out step was already reported once at WARNING when
+    the cap fired. Retrieving the exception here also prevents asyncio's "Task
+    exception was never retrieved" report. Never logs ``str(exc)``.
     """
     _ABANDONED_CLOSE_TASKS.discard(task)
     if task.cancelled():
@@ -490,9 +492,10 @@ def _observe_abandoned_close(context: str, label: str, task: asyncio.Task) -> No
         else:
             outcome = type(exc).__name__
     logger.debug(
-        "{context}: abandoned close of {label} ended after the cap ({outcome})",
+        "{context}: abandoned close of {label} ended after {reason} ({outcome})",
         context=context,
         label=label,
+        reason=reason,
         outcome=outcome,
     )
 
@@ -531,9 +534,11 @@ async def _safe_close(context: str, label: str, close_fn: Callable[[], Awaitable
         return False
     task.add_done_callback(_retrieve_close_result)
     done: set[asyncio.Future] = set()
+    abandon_reason = "the cap"
     try:
         done, _ = await asyncio.wait({task}, timeout=_CLEANUP_STEP_TIMEOUT)
     except asyncio.CancelledError:
+        abandon_reason = "the caller was cancelled"
         if task.done() and not task.cancelled():
             failure = task.exception()
             if failure is not None:
@@ -547,7 +552,7 @@ async def _safe_close(context: str, label: str, close_fn: Callable[[], Awaitable
     finally:
         if not task.done():
             _ABANDONED_CLOSE_TASKS.add(task)
-            task.add_done_callback(functools.partial(_observe_abandoned_close, context, label))
+            task.add_done_callback(functools.partial(_observe_abandoned_close, context, label, abandon_reason))
             task.cancel()
     if task not in done:
         logger.warning(
