@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "Phase 89 executed and locally reviewed — in review, PR not yet opened"
-stopped_at: "Phase 89 executed; BM review round 3 (0 critical/warning), Codex at cdd1ff8d (0 findings), verifier 22/22; next: push and open the phase PR"
-last_updated: "2026-11-18T23:59:00.000Z"
-last_activity: 2026-11-18 -- Phase 89 local review finished (2 fix rounds, WR-01 + WR-02); verifier 22/22
+status: "Phase 89 in review — PR #64 open, owner acceptance pending"
+stopped_at: "PR #64 opened at 4c9abdae; BM round 5 clean and Codex complete (0 findings) on that head; checkpoint comment posted; next: CI docker + Greptile, then owner acceptance"
+last_updated: "2026-11-19T00:41:46.000Z"
+last_activity: 2026-11-18 -- Phase 89 PR #64 opened; vibe-check deep review fix 9ec53d89; BM round 5 + Codex clean on PR head
 progress:
   total_phases: 6
   completed_phases: 2
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 89 (startup-shutdown-resource-cleanup) — IN REVIEW (local, PR not yet opened)
+Phase: 89 (startup-shutdown-resource-cleanup) — IN REVIEW (PR #64 open)
 Plan: 2 of 2 executed (89-01 shutdown isolation, 89-02 failed-startup cleanup); fix rounds WR-01 (26a2fc8f) and WR-02 (6feac144); BM round 3: 0 critical/0 warning, 6 info + 2 set-asides to backlog (owner stopping rule); Codex trusted at cdd1ff8d: complete, 0 findings; verifier: 22/22 must-haves
-Status: Phase 89 in review (local); next: push branch and open the phase PR
-Last activity: 2026-11-18 -- Phase 89 local review finished; verifier 22/22
+Status: Phase 89 in review, PR #64 open; next: CI and Greptile on head 4c9abdae, then owner acceptance
+Last activity: 2026-11-18 -- PR #64 opened; vibe-check deep review (1 medium, fixed in 9ec53d89); BM round 4 at 4a7c7c5f and round 5 at PR head 4c9abdae: 0 critical/warning; Codex complete, 0 findings at both heads; info items backlogged (DR-01, R4-IN-01, R4-IN-02)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 

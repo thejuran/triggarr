@@ -238,7 +238,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 
 - [x] **Phase 87: Settings & State-File Safety** (merged 2026-11-16, PR #62) - A failed settings write during instance removal never corrupts live state, and a non-object state file recovers instead of crashing
 - [x] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** (merged 2026-11-17, PR #63) - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix
-- [ ] **Phase 89: Startup & Shutdown Resource Cleanup** - A partial startup closes what it opened, and one failed client close never blocks the rest from closing
+- [ ] **Phase 89: Startup & Shutdown Resource Cleanup** - A partial startup closes what it opened, and one failed client close never blocks the rest from closing (both plans executed and verified locally 2026-11-18; PR #64 open in review, owner acceptance pending)
 - [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name
 - [ ] **Phase 91: Search-Command Delivery Confidence** - A timed-out search command is never blindly resent, and an unconfirmed outcome is tracked honestly instead of silently passing or failing
 - [ ] **Phase 92: Built-Image Recovery Demonstration** - CI proves on the real built image that state-file corruption and repeated failed upgrades both recover correctly
@@ -350,7 +350,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 | 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
 | 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Complete (merged PR #63) | 2026-11-17 |
-| 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; local review and verifier (22/22) finished; in review, PR not yet opened | - |
+| 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; verifier 22/22; in review, PR #64 open | - |
 | 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |
 | 92. Built-Image Recovery Demonstration | TBD | Not started | - |
