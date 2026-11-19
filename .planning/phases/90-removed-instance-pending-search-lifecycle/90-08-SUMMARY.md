@@ -56,6 +56,7 @@ All RMINST-01..04 are Pending (unticked, traceability "Pending"). Reasoning: the
 - At the first start after upgrading, pending searches left behind by previously removed instances are closed the same way.
 - These searches are left out of grab-rate figures.
 - A scheduled or manual search that was waiting to run when its instance was removed no longer runs.
+- One-time effect on upgrade (owner ruling, 2026-11-19): the first start relabels every pending search no configured instance owns as "Instance removed" (including old Radarr/Lidarr searches imported from `state.json`), and these can then age out of History. No backup is taken; the log shows one line per app with how many searches it is closing. Instance `id` values in `triggarr.toml` are managed by Triggarr and must not be edited or removed by hand.
 
 ## Deviations from Plan
 **1. [Rule 1 - Test fault] Raw lifetime_stats insert needed `last_reset_at`** (Task 1): the legacy name-keyed row insert violated a NOT NULL column; added the timestamp. Cost if wrong: test-only.
