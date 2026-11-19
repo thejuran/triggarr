@@ -1506,13 +1506,16 @@ async def get_dashboard_stats(
     # 1. Effectiveness: grab rate per app. Frozen legacy pending rows are
     # excluded from both the per-app and overall denominators (D-07) --
     # they are untracked outcomes, not confirmed misses. Resolved
-    # historical rows stay in, covered by the disclosure.
+    # historical rows stay in, covered by the disclosure. Searches of a removed
+    # instance have an unknown real outcome, so like Legacy rows they leave both
+    # the numerator and the denominator.
     async with db.execute(
         "SELECT app, "
         "SUM(CASE WHEN outcome IN ('grabbed', 'partial', 'partial_expired') THEN 1 ELSE 0 END) AS grabbed_count, "
         "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
         "FROM search_history "
         f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
+        f"AND outcome != '{OUTCOME_INSTANCE_REMOVED}' "
         "GROUP BY app",
         inst_params,
     ) as cursor:
@@ -1593,6 +1596,7 @@ async def get_dashboard_stats(
         "SELECT EXISTS("
         "SELECT 1 FROM search_history "
         f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
+        f"AND outcome != '{OUTCOME_INSTANCE_REMOVED}' "
         f"AND app = 'Sonarr' AND outcome != 'failed' AND id <= {_LEGACY_MAX_ID_SQL}"
         ")",
         inst_params,
