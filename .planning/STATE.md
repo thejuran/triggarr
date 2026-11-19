@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "Phase 90 executing: plan 3 of 8 complete"
-stopped_at: "Completed 90-03-PLAN.md (Radarr/Lidarr stable-ID selection)"
-last_updated: "2026-11-19T02:31:55.874Z"
+status: executing
+stopped_at: Completed 90-04-PLAN.md (Instance removed labeling)
+last_updated: "2026-11-19T02:35:31.816Z"
 last_activity: 2026-11-19 -- Phase 90 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 15
-  completed_plans: 10
-  percent: 67
+  completed_plans: 11
+  percent: 73
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 ## Current Position
 
 Phase: 90 (removed-instance-pending-search-lifecycle) — EXECUTING
-Plan: 3 of 8 complete (next: 90-04)
+Plan: 4 of 8 complete (next: 90-04)
 Status: Executing Phase 90
 Last activity: 2026-11-19 -- Phase 90 execution started
 
