@@ -31,6 +31,8 @@
         <div class="w-7 h-7 rounded-full bg-triggarr-card border-2 border-triggarr-bg flex items-center justify-center shrink-0 z-10 mt-1">
           {% if entry.is_legacy %}
           <div class="w-2.5 h-2.5 rounded-full bg-gray-500"></div>
+          {% elif entry.outcome == 'instance_removed' %}
+          <div class="w-2.5 h-2.5 rounded-full bg-gray-500"></div>
           {% elif entry.outcome == 'grabbed' %}
           <div class="w-2.5 h-2.5 rounded-full bg-triggarr-primary"></div>
           {% elif entry.outcome == 'partial' %}
@@ -76,6 +78,8 @@
           <div class="flex items-center justify-between">
             {% if entry.is_legacy %}
             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-500/10 text-gray-500 border border-gray-500/20">Legacy — tracking discontinued</span>
+            {% elif entry.outcome == 'instance_removed' %}
+            <span title="This instance was removed before the search finished; it will not be checked again." class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-500/10 text-gray-500 border border-gray-500/20">Instance removed</span>
             {% elif entry.outcome == 'grabbed' %}
             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-triggarr-primary/10 text-triggarr-primary border border-triggarr-primary/20">grabbed</span>
             {% elif entry.outcome == 'partial' %}
