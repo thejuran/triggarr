@@ -742,6 +742,7 @@ async def save_settings(request: Request) -> RedirectResponse:
     # cannot write back that request's stale pre-lock snapshot.
     # Collect stale clients to close AFTER releasing the lock (avoid holding lock during TCP teardown).
     clients_to_close: list = []
+    close_out_cancelled: asyncio.CancelledError | None = None
     async with request.app.state.search_lock:
         current_settings = request.app.state.settings
         new_settings = _settings_from_form(form, current_settings)
@@ -869,9 +870,69 @@ async def save_settings(request: Request) -> RedirectResponse:
             None, save_state, request.app.state.triggarr_state, state_path
         )
 
+        # Save Settings removes an instance that is missing from the form. The
+        # removal is already written to disk at this point (same rule as
+        # remove_instance), so the pending searches of every stable ID that left
+        # the configuration get their final outcome now. Compared by stable ID,
+        # not by name: an instance that is only disabled keeps its ID and its
+        # pending searches. This is the last step inside the lock, after state
+        # persistence, so this awaited step can never skip it. The log sinks
+        # were rebuilt from the new settings above and no longer know the
+        # removed instance's API key, so a failure line never carries exception
+        # text. A failure or interruption here is repaired by the startup check.
+        removed_instances: list[tuple[str, str, str]] = []
+        for name in APP_TYPES:
+            remaining_ids = {cfg.id for cfg in getattr(new_settings, name).values() if cfg.id}
+            for inst_name, old_cfg in getattr(current_settings, name).items():
+                if old_cfg.id and old_cfg.id not in remaining_ids:
+                    removed_instances.append((name, inst_name, old_cfg.id))
+        for name, inst_name, stable_id in removed_instances:
+            try:
+                # Read app.state.db anew for every call: after a replacement the
+                # next close-out must use the replacement.
+                await close_out_removed_instance_searches(
+                    request.app.state.db,
+                    app=name.title(),
+                    instance_stable_id=stable_id,
+                    instance_id=inst_name,
+                )
+            except asyncio.CancelledError as exc:
+                # Hold it: state is already persisted and the stale clients
+                # below must still be closed. The remaining close-outs are left
+                # to the startup check.
+                if close_out_cancelled is None:
+                    close_out_cancelled = exc
+            except Exception as exc:  # error boundary for post-commit cleanup
+                logger.error(
+                    "Removed {app}/{inst} via Save Settings but closing out its pending searches failed: {exc}",
+                    app=name,
+                    inst=inst_name,
+                    exc=_sanitize_exc(exc),
+                )
+            else:
+                continue
+            # The close-out failed or was interrupted: replace a retired
+            # connection before anything else touches the database.
+            replace_cancel = await _replace_retired_db(request.app)
+            if close_out_cancelled is None:
+                close_out_cancelled = replace_cancel
+            if close_out_cancelled is not None or is_connection_retired(request.app.state.db):
+                break  # no further close-out can succeed; the startup check closes what is left
+
     # Close stale clients outside the lock (TCP teardown doesn't need lock protection)
-    for c in clients_to_close:
-        await c.close()
+    if close_out_cancelled is None:
+        for c in clients_to_close:
+            await c.close()
+    else:
+        # Every close finishes even though the cancellation is re-delivered.
+        for c in clients_to_close:
+            close_error, _ = await _close_removed_client(c)
+            if close_error is not None:
+                logger.error(
+                    "Closing a replaced connection failed after Save Settings was cancelled: {exc}",
+                    exc=_sanitize_exc(close_error),
+                )
+        raise close_out_cancelled
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
