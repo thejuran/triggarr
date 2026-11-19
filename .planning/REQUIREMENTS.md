@@ -46,7 +46,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 ### Removed-Instance Searches
 
 - [ ] **RMINST-01**: When a Sonarr instance is removed, its still-pending searches get the final outcome "Instance removed" (owner decision 2026-11-15); they are kept in History, and are distinct from the existing "Legacy" label.
-- [ ] **RMINST-02**: "Instance removed" searches no longer count toward the pending-search limit and are never checked or credited again.
+- [x] **RMINST-02**: "Instance removed" searches no longer count toward the pending-search limit and are never checked or credited again.
 - [ ] **RMINST-03**: A new instance added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
 - [ ] **RMINST-04**: Pending searches already orphaned by a removal before this release are brought to the same "Instance removed" outcome at upgrade or startup.
 
@@ -103,7 +103,7 @@ Which phases cover which requirements.
 | LIFE-02 | Phase 89 | Complete |
 | LIFE-03 | Phase 89 | Complete |
 | RMINST-01 | Phase 90 | Pending |
-| RMINST-02 | Phase 90 | Pending |
+| RMINST-02 | Phase 90 | Complete |
 | RMINST-03 | Phase 90 | Pending |
 | RMINST-04 | Phase 90 | Pending |
 | DELIV-01 | Phase 91 | Pending |

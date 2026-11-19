@@ -307,7 +307,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 **Plans**: 8 plans in 8 waves (one plan per wave, run strictly in order in a single working tree)
 
 **Wave 1**
-- [ ] 90-01-PLAN.md â€” one shared rule for which searches are pending, and "instance_removed" as a finished outcome left out of the pending limit, tracking and grab rate (RMINST-02)
+- [x] 90-01-PLAN.md â€” one shared rule for which searches are pending, and "instance_removed" as a finished outcome left out of the pending limit, tracking and grab rate (RMINST-02)
 
 **Wave 2** *(blocked on Wave 1: 90-01)*
 - [ ] 90-02-PLAN.md â€” database close-out of a removed instance's pending searches by its own stable ID, and the orphan check used at startup (also with zero instances configured), neither ever leaving a half-done write behind (RMINST-01, RMINST-04)
@@ -375,7 +375,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
 | 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Complete (merged PR #63) | 2026-11-17 |
 | 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; verifier 22/22; in review, PR #64 open | - |
-| 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
+| 90. Removed-Instance Pending-Search Lifecycle | 1/8 | In Progress|  |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |
 | 92. Built-Image Recovery Demonstration | TBD | Not started | - |
 

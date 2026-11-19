@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "Phase 90 planned, ready to execute (8 plans, run in order); Phase 89 merged as PR #64"
-stopped_at: "Phase 90 planned: 8 plans passed the plan checker on the 3rd pass; next: /bm:execute-phase 90"
-last_updated: "2026-11-19T02:01:28.000Z"
-last_activity: "2026-11-18 -- Phase 89 PR #64 merged (main CI passed on abcad6d1); Phase 90 researched and planned (8 plans, 8 waves)"
+status: "Phase 90 executing: plan 1 of 8 complete"
+stopped_at: "Completed 90-01-PLAN.md (shared pending rule, instance_removed outcome)"
+last_updated: "2026-11-19T02:08:33.307Z"
+last_activity: 2026-11-19 -- Phase 90 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 15
-  completed_plans: 7
-  percent: 50
+  completed_plans: 8
+  percent: 53
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 90 (removed-instance-pending-search-lifecycle) — PLANNED, ready to execute
-Plan: 0 of 8 executed (90-01..90-08, one plan per wave, strictly in order on branch phase-90-removed-instance-pending-search-lifecycle); research, validation strategy and pattern map written; plan checker passed on iteration 3 (0 blockers, 0 warnings)
-Status: Phase 90 planned, ready to execute; Phase 89 merged as PR #64 (merge abcad6d1, main CI passed)
-Last activity: 2026-11-18 -- Phase 90 planned (8 plans); Phase 89 PR #64 merged
+Phase: 90 (removed-instance-pending-search-lifecycle) — EXECUTING
+Plan: 1 of 8 complete (next: 90-02)
+Status: Executing Phase 90
+Last activity: 2026-11-19 -- Phase 90 execution started
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -173,8 +173,8 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-18T23:00:55.188Z
-Stopped at: Phase 89 context gathered
+Last session: 2026-11-19T02:08:33.300Z
+Stopped at: Completed 90-01-PLAN.md
 Resume file: .planning/phases/89-startup-shutdown-resource-cleanup/89-CONTEXT.md
 
 ## Operator Next Steps
