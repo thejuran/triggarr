@@ -62,7 +62,7 @@ Findings: none.
 
 ### Greptile
 
-In progress on this head at the time of posting; this comment will be updated with its conclusion.
+Ran on this head: check `Greptile Review` success; summary comment confidence 5/5, no new actionable findings (backlogged items recognised as owner decisions, not raised again); 0 inline review comments.
 
 ### CI
 
@@ -73,7 +73,11 @@ In progress on this head at the time of posting; this comment will be updated wi
 | secrets | 44430432341 | success |
 | actionlint | 44430432341 | success |
 | dependencies | 44430432341 | success |
-| docker | 44430432341 | in progress (comment will be updated) |
+| docker | 44430432341 | success |
+| image-smoke | 44430432341 | success |
+| os-scan | 44430432341 | success |
+| browser-e2e | 44430432341 | success |
+| CI ready | 44430432341 | success |
 | CodeQL / Analyze (actions, javascript-typescript, python) | 44430426672 | success |
 | Review acceptance | 44430432371 | waiting for owner acceptance |
 
@@ -85,4 +89,4 @@ In progress on this head at the time of posting; this comment will be updated wi
 
 ### Incomplete items
 
-- docker CI job and Greptile were still running when this record was posted.
+- None. (Updated after posting: docker, image-smoke, os-scan, browser-e2e, CI ready and Greptile all finished with success on this head.) Owner acceptance of this exact head is outstanding.
