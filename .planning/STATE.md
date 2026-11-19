@@ -4,7 +4,7 @@ milestone: v2.14
 milestone_name: Reliability
 status: executing
 stopped_at: Completed 90-07-PLAN.md (in-lock revalidation of queued search work)
-last_updated: "2026-11-19T02:56:56.641Z"
+last_updated: "2026-11-19T03:03:45.000Z"
 last_activity: 2026-11-19 -- Phase 90 execution started
 progress:
   total_phases: 6
@@ -45,7 +45,7 @@ Six phases derived from this milestone's 24 requirements (CONSIST, LIFE, DELIV, 
 | 87 — Settings & State-File Safety | A failed settings write during instance removal never corrupts live state; a non-object state file recovers instead of crashing | CONSIST-01..03 | — (first phase) |
 | 88 — Bounded Upgrade Backups & Telemetry Regression | Pre-upgrade backups stay capped through a crash loop; a permanent test pins the already-fixed telemetry variable | BKUP-01..02, TELEM-01..02 | — (independent; batched with 87 as equally small, isolated work) |
 | 89 — Startup & Shutdown Resource Cleanup | A partial startup closes what it opened; one failed client close never blocks the rest from closing | LIFE-01..03 | — (self-contained; sequenced after 87-88 so the reorder pattern is proven first) |
-| 90 — Removed-Instance Pending-Search Lifecycle | A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name | RMINST-01..04 | Phase 87 (same instance-removal route) |
+| 90 — Removed-Instance Pending-Search Lifecycle | A removed Sonarr, Radarr or Lidarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name | RMINST-01..04 | Phase 87 (same instance-removal route) |
 | 91 — Search-Command Delivery Confidence | A timed-out search command is never blindly resent; an unconfirmed outcome is tracked honestly | DELIV-01..07 | — (self-contained; sequenced last as the largest blast radius) |
 | 92 — Built-Image Recovery Demonstration | CI proves on the real built image that state-file corruption and repeated failed upgrades both recover correctly | SMOKE-01..03 | Phases 87-91 (validates the real fixes, written last) |
 

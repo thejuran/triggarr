@@ -239,7 +239,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 - [x] **Phase 87: Settings & State-File Safety** (merged 2026-11-16, PR #62) - A failed settings write during instance removal never corrupts live state, and a non-object state file recovers instead of crashing
 - [x] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** (merged 2026-11-17, PR #63) - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix
 - [x] **Phase 89: Startup & Shutdown Resource Cleanup** (merged 2026-11-19 UTC, PR #64) - A partial startup closes what it opened, and one failed client close never blocks the rest from closing
-- [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name (8 plans written and checked 2026-11-18; ready to execute)
+- [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr, Radarr or Lidarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name (8 plans written and checked 2026-11-18; ready to execute)
 - [ ] **Phase 91: Search-Command Delivery Confidence** - A timed-out search command is never blindly resent, and an unconfirmed outcome is tracked honestly instead of silently passing or failing
 - [ ] **Phase 92: Built-Image Recovery Demonstration** - CI proves on the real built image that state-file corruption and repeated failed upgrades both recover correctly
 
@@ -296,13 +296,13 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 - [x] 89-02-PLAN.md â€” a startup that fails after the database opens closes the database and every client built so far, stops the scheduler only if it was started, logs one summary line and re-raises the original error; the aiosqlite worker thread is proven stopped (LIFE-01, LIFE-03)
 
 ### Phase 90: Removed-Instance Pending-Search Lifecycle
-**Goal**: A removed Sonarr instance's leftover pending searches get a defined, visible end state, and a reused instance name never inherits them.
+**Goal**: A removed instance's leftover pending searches (Sonarr, Radarr or Lidarr) get a defined, visible end state, and a reused instance name never inherits them.
 **Depends on**: Phase 87 (reuses the settings-write-ordering fix in the same instance-removal route)
 **Requirements**: RMINST-01, RMINST-02, RMINST-03, RMINST-04
 **Success Criteria** (what must be TRUE):
-  1. When a Sonarr instance is removed, its still-pending searches get the final outcome "Instance removed," stay visible in History, and read as distinct from "Legacy."
+  1. When a Sonarr, Radarr or Lidarr instance is removed, its still-pending searches get the final outcome "Instance removed," stay visible in History, and read as distinct from "Legacy."
   2. "Instance removed" searches no longer count toward the pending-search limit and are never checked or credited again.
-  3. A new instance added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
+  3. A new instance of any app added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
   4. Pending searches already orphaned by a removal before this release reach the same "Instance removed" outcome at the next upgrade or startup.
 **Plans**: 8 plans in 8 waves (one plan per wave, run strictly in order in a single working tree)
 
