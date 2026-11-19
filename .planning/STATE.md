@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: executing
-stopped_at: "Phase 88 verified locally (20/20, 1 owner override) after 3 BM + Codex review rounds; branch not yet pushed, PR and owner acceptance pending"
-last_updated: "2026-11-17T04:05:00.000Z"
-last_activity: 2026-11-17 -- Phase 88 review rounds finished (Codex 0 findings on 9018a341) and goal verification passed
+status: "Phase 89 executed and locally reviewed — in review, PR not yet opened"
+stopped_at: "Phase 89 executed; BM review round 3 (0 critical/warning), Codex at cdd1ff8d (0 findings), verifier 22/22; next: push and open the phase PR"
+last_updated: "2026-11-18T23:59:00.000Z"
+last_activity: 2026-11-18 -- Phase 89 local review finished (2 fix rounds, WR-01 + WR-02); verifier 22/22
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
-  percent: 17
+  completed_phases: 2
+  total_plans: 7
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 88: bounded-upgrade-backups-telemetry-regression
+**Current focus:** Phase 89: startup-shutdown-resource-cleanup
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 88 (bounded-upgrade-backups-telemetry-regression) — IN REVIEW (verified locally; PR and owner acceptance pending)
-Plan: 2 of 2 executed (88-01 bounded backups, BKUP-01/02 complete; 88-02 telemetry regression, TELEM-01/02 complete)
-Status: Phase 88 in review -- both plans executed; BM review 3 rounds (final: 0 critical, 0 warning), paired Codex complete with 0 findings on 9018a341, goal verification passed with 1 owner override (D-12 vs WR-02); next: push branch and open the phase PR
-Last activity: 2026-11-17 -- Phase 88 review rounds finished and goal verification passed
+Phase: 89 (startup-shutdown-resource-cleanup) — IN REVIEW (local, PR not yet opened)
+Plan: 2 of 2 executed (89-01 shutdown isolation, 89-02 failed-startup cleanup); fix rounds WR-01 (26a2fc8f) and WR-02 (6feac144); BM round 3: 0 critical/0 warning, 6 info + 2 set-asides to backlog (owner stopping rule); Codex trusted at cdd1ff8d: complete, 0 findings; verifier: 22/22 must-haves
+Status: Phase 89 in review (local); next: push branch and open the phase PR
+Last activity: 2026-11-18 -- Phase 89 local review finished; verifier 22/22
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -168,18 +168,19 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 | follow-up | Draft VALIDATION.md files for Phases 83, 85 and 86 (nyquist_compliant false) | Deferred (owner has not asked for them) |
 | follow-up | Tag-triggered publication is unverified until the next authorized release (Phase 82 waiver) | Closed 2026-11-15: tag-triggered Release run 43758123019 succeeded for v2.12.1 |
 | follow-up | Phase 87 deep-review deferrals: `save_settings` close loop not cancellation-safe, self-cancelled close aborts a committed removal's response, startup set-aside copy blocks the loop, BM iteration 6 IN-01..03 | Deferred 2026-11-16 (backlog/MAINTENANCE.md) |
+| follow-up | Phase 88 review deferrals: remove retry backups once an upgrade succeeds, disk-full retry copy locks startup, PR-head IN-01/IN-02 (single-process `.partial` assumption, prune log wording) | Deferred 2026-11-17 (backlog/MAINTENANCE.md) |
 | follow-up | Isolated Codex review for bot/fork PRs is incomplete on current Codex models (Phase 85.1 exception); vibe-check fallback stays | Deferred (reopening tracked in backlog/MAINTENANCE.md) |
 
 ## Session Continuity
 
-Last session: 2026-11-17T04:05:00.000Z
-Stopped at: Phase 88 verified locally (20/20, 1 owner override) after 3 BM + Codex review rounds; branch not yet pushed
-Resume file: None -- next step is the end-of-phase push and PR (offer /deep-review first; record the checkpoint per docs/review-checkpoint-record.md on the PR head)
+Last session: 2026-11-18T23:00:55.188Z
+Stopped at: Phase 89 context gathered
+Resume file: .planning/phases/89-startup-shutdown-resource-cleanup/89-CONTEXT.md
 
 ## Operator Next Steps
 
-- Discuss Phase 88 next (`/bm:discuss-phase 88`), on branch `phase-88-bounded-upgrade-backups-telemetry-regression` (cut from main at `d7704342`; carries Phase 87's closeout records: this update, the PR #62 checkpoint copy and the PR-head Codex evidence)
-- Production compose tracks `:main`, so a pull and recreate now runs Phase 87; not done yet
+- Plan Phase 89 next (`/bm:plan-phase 89`; context gathered 2026-11-18), on branch `phase-89-startup-shutdown-resource-cleanup` (cut from main at `b4a25aa1`; carries Phase 88's closeout records: this update, the PR #63 head review, Codex evidence and checkpoint copy)
+- Production compose tracks `:main` but still runs v2.12.1 (`3cede40`, checked 2026-11-18); a pull and recreate now would run Phases 87 and 88. Not done yet
 - Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. The held branch `planning/post-v2.12.1` is pushed with the next substantive push, not on its own (no docs-only PRs)
 - Decide BM SA-01 (pin the uv version CI installs) -- see backlog/MAINTENANCE.md. SA-12 is in v2.14 scope in reduced form (startup is not affected; regression check plus an "unsupported" note)
 - Release follow-ups from v2.12.1: remove the temporary `zlib1g` Dockerfile step once the base image carries the fix; update the `idna` text in docs/ci-negative-demonstrations.md; add the "superseded by PILOT-03" note to the blueprint -- see backlog/MAINTENANCE.md and Deferred Items

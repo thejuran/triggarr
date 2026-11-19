@@ -24,9 +24,9 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Resource Lifecycle
 
-- [ ] **LIFE-01**: When startup fails partway, Triggarr closes the database and every connection it had already opened, and the process exits promptly rather than hanging.
-- [ ] **LIFE-02**: When one *arr connection fails to close at shutdown, the remaining connections and the database are still closed, and the failure is logged sanitized.
-- [ ] **LIFE-03**: After a failed startup, the scheduler is not left running.
+- [x] **LIFE-01**: When startup fails partway, Triggarr closes the database and every connection it had already opened, and the process exits promptly rather than hanging.
+- [x] **LIFE-02**: When one *arr connection fails to close at shutdown, the remaining connections and the database are still closed, and the failure is logged sanitized.
+- [x] **LIFE-03**: After a failed startup, the scheduler is not left running.
 
 ### Search-Command Delivery
 
@@ -99,9 +99,9 @@ Which phases cover which requirements.
 | BKUP-02 | Phase 88 | Complete |
 | TELEM-01 | Phase 88 | Complete |
 | TELEM-02 | Phase 88 | Complete |
-| LIFE-01 | Phase 89 | Pending |
-| LIFE-02 | Phase 89 | Pending |
-| LIFE-03 | Phase 89 | Pending |
+| LIFE-01 | Phase 89 | Complete |
+| LIFE-02 | Phase 89 | Complete |
+| LIFE-03 | Phase 89 | Complete |
 | RMINST-01 | Phase 90 | Pending |
 | RMINST-02 | Phase 90 | Pending |
 | RMINST-03 | Phase 90 | Pending |

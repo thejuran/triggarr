@@ -1,0 +1,134 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "cdd1ff8dce62e5c9e4ce185964c84b27141dd083",
+  "inspected_base_sha": "b4a25aa1b033d6168a4d6482979a4638330891a3",
+  "pr_url": "none",
+  "scope": "Phase 89 startup/shutdown resource cleanup: full specified source/test diff and both changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. Independently ran 10 targeted tests successfully. Harness evidence for the exact head reports 3381 passed and 1 skipped.",
+  "coverage": [
+    "Entire in-scope diff: triggarr/search/scheduler.py and tests/test_scheduler.py.",
+    "Both added plans: 89-01-PLAN.md and 89-02-PLAN.md.",
+    "Startup failures during database initialization, cutover, client construction, scheduler start, and post-start scheduling.",
+    "Shutdown ordering, timeout handling, cancellation propagation, abandoned-task ownership, and exception retrieval.",
+    "Regression assertions and separation of observed resource state from test rescue cleanup.",
+    "Credential-safe logging, surrounding client lifecycle, configuration replacement, and application entry point.",
+    "Installed aiosqlite and APScheduler implementation assumptions.",
+    "No CI, dependency, audit, or publication-policy changes in the scoped diff."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    ".planning/**/codex/** and .planning/**/*.jsonl.",
+    "Generated review artifacts and other reviewers' conclusions."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e b4a25aa1b033d6168a4d6482979a4638330891a3",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff b4a25aa1b033d6168a4d6482979a4638330891a3..cdd1ff8dce62e5c9e4ce185964c84b27141dd083 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped source/test diff; truncated output was subsequently inspected in smaller sections."
+    },
+    {
+      "command": "git diff b4a25aa1b033d6168a4d6482979a4638330891a3..cdd1ff8dce62e5c9e4ce185964c84b27141dd083 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read changed plans; subsequently read both complete files in smaller sections."
+    },
+    {
+      "command": "git diff --stat b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD; git diff --name-only b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD; cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inventory changes and inspect harness test evidence."
+    },
+    {
+      "command": "git diff b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD -- triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect production changes."
+    },
+    {
+      "command": "sed -n '650,1035p' triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Read complete current lifespan implementation."
+    },
+    {
+      "command": "sed -n '1,145p' .planning/phases/89-startup-shutdown-resource-cleanup/89-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect first half of shutdown plan."
+    },
+    {
+      "command": "sed -n '146,279p' .planning/phases/89-startup-shutdown-resource-cleanup/89-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect remainder of shutdown plan."
+    },
+    {
+      "command": "sed -n '1,155p' .planning/phases/89-startup-shutdown-resource-cleanup/89-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect first portion of startup plan."
+    },
+    {
+      "command": "sed -n '156,269p' .planning/phases/89-startup-shutdown-resource-cleanup/89-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect remainder of startup plan."
+    },
+    {
+      "command": "sed -n '2700,2950p' tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect observation/rescue helper and shutdown regressions."
+    },
+    {
+      "command": "sed -n '2951,3220p' tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect failed-startup regressions."
+    },
+    {
+      "command": "sed -n '3221,3480p' tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect scheduler-state and cancellation regressions."
+    },
+    {
+      "command": "rg --files -g '*python*' -g 'pyproject.toml' -g 'AGENTS.md' -g 'core.py' -g 'asyncio.py' -g 'base.py' -g '*lock' --hidden .venv triggarr tests 2>/dev/null; sed -n '1,120p' triggarr/clients/base.py; sed -n '285,320p' triggarr/clients/base.py; sed -n '1,100p' triggarr/search/scheduler.py; rg -n 'create_lifespan|uvicorn|lifespan' triggarr/__main__.py triggarr/app.py; rg -n 'def _sanitize_exc|clients.*=|del .*clients|\\.close\\(' triggarr/web/routes.py triggarr/search/engine.py",
+      "exit_code": 0,
+      "purpose": "Trace surrounding lifecycle and sanitization code. One intermediate search reported nonexistent triggarr/app.py; entry point was found in __main__.py."
+    },
+    {
+      "command": "git diff -w b4a25aa1b033d6168a4d6482979a4638330891a3..HEAD -- triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Separate semantic changes from startup-block indentation."
+    },
+    {
+      "command": "ls -ld .venv .venv/bin/python .venv/lib/python*/site-packages/aiosqlite .venv/lib/python*/site-packages/apscheduler; sed -n '49,95p' triggarr/__main__.py; sed -n '730,875p' triggarr/web/routes.py; sed -n '2350,2700p' tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Inspect local dependency locations, application wiring, configuration changes, and helper regression tests."
+    },
+    {
+      "command": "sed -n '80,225p' .venv/lib/python3.13/site-packages/aiosqlite/core.py; cat .venv/lib/python3.13/site-packages/apscheduler/schedulers/asyncio.py; sed -n '185,250p' .venv/lib/python3.13/site-packages/apscheduler/schedulers/base.py; sed -n '1,100p' .venv/lib/python3.13/site-packages/apscheduler/executors/asyncio.py; git status --short",
+      "exit_code": 0,
+      "purpose": "Validate cancellation and scheduler-stop assumptions against installed source; inspect worktree status."
+    },
+    {
+      "command": ".venv/bin/python -B -m pytest -p no:cacheprovider -s -q tests/test_scheduler.py -k 'safe_close and not wedged or safe_stop_scheduler or cleanup_step_timeout or stop_scheduler_if_running'",
+      "exit_code": 0,
+      "purpose": "Independently verify cleanup helpers without bytecode or pytest cache writes: 10 passed, 78 deselected."
+    },
+    {
+      "command": "git diff --name-only b4a25aa1b033d6168a4d6482979a4638330891a3..cdd1ff8dce62e5c9e4ce185964c84b27141dd083 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git diff --numstat b4a25aa1b033d6168a4d6482979a4638330891a3..cdd1ff8dce62e5c9e4ce185964c84b27141dd083 -- ':(glob).planning/**/*-PLAN.md'; git diff --check b4a25aa1b033d6168a4d6482979a4638330891a3..cdd1ff8dce62e5c9e4ce185964c84b27141dd083 -- triggarr/search/scheduler.py tests/test_scheduler.py",
+      "exit_code": 0,
+      "purpose": "Confirm complete scope inventory and check source/test whitespace."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Full-suite execution was assessed from harness evidence; independent execution covered 10 targeted tests. Disk-writing lifespan tests were not rerun in the read-only sandbox.",
+    "No live server or container shutdown experiment was performed.",
+    "A cleanup timeout cannot terminate a blocked SQLite worker thread; this residual limitation is explicitly documented in the implementation and plans."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

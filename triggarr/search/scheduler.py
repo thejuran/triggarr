@@ -22,6 +22,7 @@ Phase 65 hardening layered on top of the original wiring:
 from __future__ import annotations
 
 import asyncio
+import functools
 import math
 import os
 import time
@@ -111,6 +112,13 @@ _SHUTDOWN_DRAIN_TIMEOUT: float = _read_shutdown_drain_timeout()
 # module-constant pattern; unlike the drain timeout this is NOT operator-
 # configurable (no env-override) — the TTL is an internal performance knob.
 _TAG_CACHE_TTL_SECONDS: float = 3600.0
+
+# Per-step cap (seconds) on how long cleanup waits for one resource close during
+# shutdown and failed-startup cleanup. Hardcoded: NOT operator-configurable, no
+# env override. The cap bounds how long cleanup waits for a step; it cannot
+# interrupt an OS thread blocked inside sqlite3, and a close still blocked at
+# process exit can still delay that exit because no forced exit is added.
+_CLEANUP_STEP_TIMEOUT: float = 5.0
 
 
 def _cached_tags_cover_config(cached_tags: list[Tag], instance_config: InstanceConfig) -> bool:
@@ -457,6 +465,194 @@ def _on_job_error(event) -> None:
     )
 
 
+# Strong references to close tasks that outlived the cap, so the event loop's
+# weak reference cannot let them be garbage-collected while pending. Emptied by
+# the done-callback attached when a task is abandoned.
+_ABANDONED_CLOSE_TASKS: set[asyncio.Task] = set()
+
+
+def _observe_abandoned_close(context: str, label: str, reason: str, task: asyncio.Task) -> None:
+    """Done-callback for an abandoned close task: release it and log its outcome.
+
+    ``reason`` says why the close was abandoned: "the cap" when the wait timed
+    out, or "the caller was cancelled" when ``_safe_close`` itself was cancelled.
+    Logged at DEBUG: a timed-out step was already reported once at WARNING when
+    the cap fired. Retrieving the exception here also prevents asyncio's "Task
+    exception was never retrieved" report. Never logs ``str(exc)``.
+    """
+    _ABANDONED_CLOSE_TASKS.discard(task)
+    if task.cancelled():
+        outcome = "cancelled"
+    else:
+        exc = task.exception()
+        if exc is None:
+            outcome = "finished"
+        elif isinstance(exc, Exception):
+            outcome = _sanitize_exc(exc)
+        else:
+            outcome = type(exc).__name__
+    logger.debug(
+        "{context}: abandoned close of {label} ended after {reason} ({outcome})",
+        context=context,
+        label=label,
+        reason=reason,
+        outcome=outcome,
+    )
+
+
+def _retrieve_close_result(task: asyncio.Task) -> None:
+    """Done-callback attached to every close task: retrieve its result, log nothing.
+
+    Retrieving the exception guarantees asyncio never reports "Task exception was
+    never retrieved" (with the raw exception text, which can carry a URL with
+    credentials) for a close task, whichever way ``_safe_close`` exits. Retrieval
+    is idempotent, so later ``task.exception()`` calls are unaffected.
+    """
+    if task.cancelled():
+        return
+    task.exception()
+
+
+async def _safe_close(context: str, label: str, close_fn: Callable[[], Awaitable[None]]) -> bool:
+    """Attempt one cleanup step, wait at most ``_CLEANUP_STEP_TIMEOUT`` seconds, never raise.
+
+    Returns whether the step completed. The close runs in a task this helper
+    owns and only this helper's wait is bounded: awaiting the close directly
+    inside ``asyncio.timeout`` would not return at the cap, because
+    ``aiosqlite.Connection.close()`` awaits again in its own ``finally`` after
+    being cancelled and so may never finish while its worker thread is blocked.
+    """
+    try:
+        task = asyncio.ensure_future(close_fn())
+    except Exception as exc:
+        logger.warning(
+            "{context}: could not close {label} ({exc}); continuing",
+            context=context,
+            label=label,
+            exc=_sanitize_exc(exc) if isinstance(exc, Exception) else type(exc).__name__,
+        )
+        return False
+    task.add_done_callback(_retrieve_close_result)
+    done: set[asyncio.Future] = set()
+    abandon_reason = "the cap"
+    try:
+        done, _ = await asyncio.wait({task}, timeout=_CLEANUP_STEP_TIMEOUT)
+    except asyncio.CancelledError:
+        abandon_reason = "the caller was cancelled"
+        if task.done() and not task.cancelled():
+            failure = task.exception()
+            if failure is not None:
+                logger.warning(
+                    "{context}: could not close {label} ({exc}); continuing",
+                    context=context,
+                    label=label,
+                    exc=_sanitize_exc(failure) if isinstance(failure, Exception) else type(failure).__name__,
+                )
+        raise
+    finally:
+        if not task.done():
+            _ABANDONED_CLOSE_TASKS.add(task)
+            task.add_done_callback(functools.partial(_observe_abandoned_close, context, label, abandon_reason))
+            task.cancel()
+    if task not in done:
+        logger.warning(
+            "{context}: {label} did not close within {t}s; continuing",
+            context=context,
+            label=label,
+            t=_CLEANUP_STEP_TIMEOUT,
+        )
+        return False
+    if task.cancelled():
+        logger.warning(
+            "{context}: could not close {label} ({exc}); continuing",
+            context=context,
+            label=label,
+            exc="cancelled",
+        )
+        return False
+    exc = task.exception()
+    if exc is None:
+        return True
+    logger.warning(
+        "{context}: could not close {label} ({exc}); continuing",
+        context=context,
+        label=label,
+        exc=_sanitize_exc(exc) if isinstance(exc, Exception) else type(exc).__name__,
+    )
+    return False
+
+
+def _safe_stop_scheduler(context: str, scheduler) -> bool:
+    """Request a scheduler stop; log and continue on failure, never raise.
+
+    Synchronous because ``BaseScheduler.shutdown`` is a sync call. For a real
+    ``AsyncIOScheduler`` a True return means the stop was requested: its
+    shutdown queues the state change on the event loop, which takes effect on
+    the next loop iteration.
+    """
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception as exc:
+        logger.warning(
+            "{context}: could not stop the scheduler ({exc}); continuing",
+            context=context,
+            exc=_sanitize_exc(exc),
+        )
+        return False
+    return True
+
+
+async def _stop_scheduler_if_running(context: str, scheduler) -> bool:
+    """Stop the scheduler only if it is actually running; report whether it is observed stopped.
+
+    Never raises. The state is read from the scheduler rather than from a flag
+    set after ``start()`` returns: ``BaseScheduler.start()`` sets its running
+    state before logging, dispatching its start event and waking up
+    (``base.py:213-218``), so a ``start()`` that raises can leave it running.
+    A scheduler that is not running is never shut down, which would raise
+    ``SchedulerNotRunningError``.
+    """
+    if not scheduler.running:
+        return False
+    if not _safe_stop_scheduler(context, scheduler):
+        return False
+    # AsyncIOScheduler.shutdown only queues the real shutdown on the event loop;
+    # one loop iteration lets it take effect before the state is re-read.
+    await asyncio.sleep(0)
+    if scheduler.running:
+        logger.warning("{context}: the scheduler did not stop; continuing", context=context)
+        return False
+    return True
+
+
+async def _close_through_cancellation(
+    context: str, label: str, close_fn: Callable[[], Awaitable[None]]
+) -> tuple[bool, asyncio.CancelledError | None]:
+    """Run one ``_safe_close`` step; if the caller is cancelled meanwhile, hand the cancellation back.
+
+    Returns ``(closed, cancellation)``. A cancellation is returned rather than
+    raised so failed-startup cleanup and shutdown can still attempt every remaining step
+    (the database last, which is what lets the process exit); the caller must
+    re-raise it once cleanup is done.
+    """
+    try:
+        return await _safe_close(context, label, close_fn), None
+    except asyncio.CancelledError as cancel:
+        logger.warning(
+            "{context}: closing {label} was interrupted by cancellation; continuing",
+            context=context,
+            label=label,
+        )
+        return False, cancel
+
+
+def _describe_closed(parts: list[str]) -> str:
+    """Join closed-resource descriptions as "a, b and c"."""
+    if len(parts) <= 1:
+        return "".join(parts)
+    return ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
 def create_lifespan(
     settings: Settings, state_path: Path, config_path: Path
 ) -> Callable[..., AsyncIterator[None]]:
@@ -493,184 +689,244 @@ def create_lifespan(
 
         # Initialize search history database with shared WAL connection
         db_path = state_path.parent / "triggarr.db"
-        db = await aiosqlite.connect(db_path)
-        await db.execute("PRAGMA journal_mode=WAL")
-        await db.execute("PRAGMA synchronous=NORMAL")
-        # Phase 81 (S1): ensure_config has already backfilled every instance's
-        # stable ID before this lifespan runs (startup runs before the
-        # lifespan, triggarr/__main__.py _run), so this mapping is complete
-        # for the one-time v10 association of existing rows.
-        instance_stable_ids = {
-            (app_type.title(), name): cfg.id
-            for app_type in APP_TYPES
-            for name, cfg in getattr(settings, app_type).items()
-            if cfg.id
-        }
-        await init_db(db, db_path, instance_stable_ids=instance_stable_ids)
-        # Migrate existing search_log from state.json to SQLite (one-time).
-        # Runs before the cutover so imported pre-fix rows fall at or below
-        # the cutover's high-water mark (legacy, and disclosed).
-        if state.get("search_log"):
-            migrated = await migrate_from_state(db, state["search_log"])
-            if migrated > 0:
-                state["search_log"] = []
-                await asyncio.get_running_loop().run_in_executor(None, save_state, state, state_path)
+        # Resources are tracked as plain locals from the moment they are acquired,
+        # so failed-startup cleanup never depends on app.state having been populated.
+        db: aiosqlite.Connection | None = None
+        created_clients: list[tuple[str, str, ArrClient]] = []
 
-        # Phase 81: record the attribution cutover exactly once, after the
-        # migration that creates its schema and after the one-time import
-        # above, so every pre-fix row is at or below its high-water mark.
-        # Deliberately not
-        # caught -- a failed cutover must stop startup the same way a failed
-        # migration does, so pre-cutover pending rows are never tracked
-        # under the new ownership rules.
-        await ensure_cutover_recorded(db, {name: cfg.id for name, cfg in settings.sonarr.items()})
+        try:
+            db = await aiosqlite.connect(db_path)
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA synchronous=NORMAL")
+            # Phase 81 (S1): ensure_config has already backfilled every instance's
+            # stable ID before this lifespan runs (startup runs before the
+            # lifespan, triggarr/__main__.py _run), so this mapping is complete
+            # for the one-time v10 association of existing rows.
+            instance_stable_ids = {
+                (app_type.title(), name): cfg.id
+                for app_type in APP_TYPES
+                for name, cfg in getattr(settings, app_type).items()
+                if cfg.id
+            }
+            await init_db(db, db_path, instance_stable_ids=instance_stable_ids)
+            # Migrate existing search_log from state.json to SQLite (one-time).
+            # Runs before the cutover so imported pre-fix rows fall at or below
+            # the cutover's high-water mark (legacy, and disclosed).
+            if state.get("search_log"):
+                migrated = await migrate_from_state(db, state["search_log"])
+                if migrated > 0:
+                    state["search_log"] = []
+                    await asyncio.get_running_loop().run_in_executor(None, save_state, state, state_path)
 
-        # --- Create long-lived clients for enabled instances ---
-        client_classes: dict[str, type[ArrClient]] = {
-            "radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient,
-        }
-        all_clients: dict[str, dict[str, ArrClient]] = {}
+            # Phase 81: record the attribution cutover exactly once, after the
+            # migration that creates its schema and after the one-time import
+            # above, so every pre-fix row is at or below its high-water mark.
+            # Deliberately not
+            # caught -- a failed cutover must stop startup the same way a failed
+            # migration does, so pre-cutover pending rows are never tracked
+            # under the new ownership rules.
+            await ensure_cutover_recorded(db, {name: cfg.id for name, cfg in settings.sonarr.items()})
 
-        for app_type in APP_TYPES:
-            clients: dict[str, ArrClient] = {}
-            cls = client_classes[app_type]
-            for inst_name, cfg in settings.get_enabled_instances(app_type).items():
-                clients[inst_name] = cls(
-                    base_url=cfg.url,
-                    api_key=cfg.api_key,
-                    timeout=settings.general.request_timeout,
-                    page_size=settings.general.page_size,
+            # --- Create long-lived clients for enabled instances ---
+            client_classes: dict[str, type[ArrClient]] = {
+                "radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient,
+            }
+            all_clients: dict[str, dict[str, ArrClient]] = {}
+
+            for app_type in APP_TYPES:
+                clients: dict[str, ArrClient] = {}
+                cls = client_classes[app_type]
+                for inst_name, cfg in settings.get_enabled_instances(app_type).items():
+                    clients[inst_name] = cls(
+                        base_url=cfg.url,
+                        api_key=cfg.api_key,
+                        timeout=settings.general.request_timeout,
+                        page_size=settings.general.page_size,
+                    )
+                    created_clients.append((app_type, inst_name, clients[inst_name]))
+                all_clients[app_type] = clients
+
+            # --- Expose all shared state on app.state ---
+            app.state.triggarr_state = state
+            app.state.settings = settings
+            app.state.db = db
+            app.state.scheduler = scheduler
+            app.state.radarr_clients = all_clients.get("radarr", {})
+            app.state.sonarr_clients = all_clients.get("sonarr", {})
+            app.state.lidarr_clients = all_clients.get("lidarr", {})
+            app.state.config_path = config_path
+            app.state.state_path = state_path
+            # search_lock serializes (a) search cycles in scheduler.make_search_job and
+            # (b) every config-save call to _atomic_toml_write in triggarr.web.routes.
+            # SAFETY-05 (Assumption A1): this asyncio.Lock is correct only because
+            # Triggarr runs a single uvicorn worker (__main__.py constructs uvicorn.Config
+            # without workers=N). Adding --workers >1 would silently break serialization
+            # because asyncio.Lock is per-event-loop. If you ever introduce multi-worker
+            # uvicorn, replace this with a file-level lock (fcntl.flock) or a process-level
+            # primitive. Verified statically by tests/audit_lock_coverage.py (AST audit of
+            # routes.py) and dynamically by
+            # tests/test_web.py::test_concurrent_settings_save_serialized.
+            app.state.search_lock = asyncio.Lock()
+            # WR-05: `app.state` is starlette.datastructures.State -- a
+            # SimpleNamespace-like __dict__ container with no class slot to
+            # attach __annotations__. Inline `: type = value` annotations on
+            # these attributes were misleading: they are discarded at runtime
+            # and not stored anywhere consultable. Document the intended types
+            # in comments instead so readers do not infer enforcement that
+            # does not exist.
+            # last_search_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
+            app.state.last_search_time = {}
+            # last_refresh_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
+            # Sibling rate-limit dict for the refresh_counts endpoint (D-08, Phase 74).
+            # Independent of last_search_time so a count refresh and a manual search
+            # do not rate-limit each other.
+            app.state.last_refresh_time = {}
+            # reset_token: tuple[str, float] | None  (CSPRNG token string, expiry as monotonic ts)
+            # Set by reset_request_post, consumed and cleared by reset_confirm_post.
+            # A container restart sets this to None, invalidating any pending reset token (D-04, D-18).
+            app.state.reset_token = None
+            # last_reset_time: dict[str, float]  (key: "request"/"confirm", value: monotonic ts)
+            # Rate-limit gate for both reset endpoints (D-14, D-15).
+            app.state.last_reset_time = {}
+            app.state.last_health_check = None
+            # SAFETY-03: per-job consecutive-failure counter keyed by
+            # f"{app_name}_{instance_name}_search". Incremented when the engine
+            # cycle returns with connected=False or when the narrow-tuple cycle
+            # catch fires; reset on cycle success.
+            # search_failures: dict[str, int]
+            app.state.search_failures = {}
+            # SAFETY-03 (Codex finding 2): set to True when save_state raises
+            # OSError/aiosqlite.Error mid-persistence. Observable state only in
+            # this phase; future phase may surface via /health endpoint.
+            # persistence_degraded: bool
+            app.state.persistence_degraded = False
+            # RES-01 (Codex finding 3): tuple[str, float] | None holding the
+            # currently-running cycle's (job_id, monotonic_start). Set INSIDE
+            # `async with search_lock` in make_search_job; cleared in the same
+            # block's finally. Read by the shutdown drain to log which instance
+            # is stuck and how long it's been running.
+            # search_lock_holder: tuple[str, float] | None
+            app.state.search_lock_holder = None
+            # RES-03 (D-05): tag-list cache keyed by (app_name, instance_name).
+            # value: (tags: list[Tag], fetched_at: float) where fetched_at is
+            # time.monotonic() at the moment of a successful get_tags() fetch.
+            # Read+populated by the resolver built in make_search_job's job()
+            # closure (and by search_now in routes). Invalidated on instance config
+            # save for changed instances; cleared on remove_instance. Only
+            # successful fetches are stored (no negative caching — D-07).
+            # tag_cache: dict[tuple[str, str], tuple[list, float]]
+            app.state.tag_cache = {}
+
+            # Import update_info dict once at lifespan start (not inside job)
+            # to avoid circular import during scheduler ticks.
+            from triggarr.web.routes import update_info as _update_info
+
+            app.state.update_info = _update_info
+
+            # Sync auth_state at startup so the nav bar logout link renders
+            # correctly for users whose session cookie is still valid after restart.
+            from triggarr.web.routes import _sync_auth_state
+
+            _sync_auth_state(settings)
+
+            # --- Schedule jobs for enabled instances using make_search_job ---
+            for app_name in APP_TYPES:
+                for inst_name, cfg in settings.get_enabled_instances(app_name).items():
+                    job_fn = make_search_job(app, app_name, inst_name, state_path)
+                    job_id = f"{app_name}_{inst_name}_search"
+                    scheduler.add_job(
+                        job_fn,
+                        "interval",
+                        minutes=cfg.search_interval,
+                        id=job_id,
+                        next_run_time=datetime.now(UTC),
+                    )
+                    logger.info(
+                        "Scheduled {app}/{instance} search every {interval}m (first run: now)",
+                        app=app_name.title(),
+                        instance=inst_name,
+                        interval=cfg.search_interval,
+                    )
+
+            # SAFETY-02: surface non-narrow-tuple exceptions that propagate out of
+            # make_search_job (RuntimeError, KeyError, etc.) by routing them through
+            # the EVENT_JOB_ERROR listener instead of APScheduler's silent default.
+            scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
+            scheduler.start()
+
+            async def update_check_job() -> None:
+                result = await check_for_update()
+                if result is not None:
+                    app.state.update_info.update(result)
+                    if result["update_available"]:
+                        logger.info("Update available: v{version}", version=result["latest_version"])
+
+            scheduler.add_job(
+                update_check_job,
+                "interval",
+                hours=24,
+                id="update_check",
+                next_run_time=datetime.now(UTC),
+            )
+        except BaseException as startup_exc:
+            # BaseException, not Exception: a startup cancelled or interrupted
+            # mid-step (CancelledError, KeyboardInterrupt, SystemExit) must still
+            # close the database, whose non-daemon worker thread otherwise keeps
+            # the process from exiting (WR-01). The unchanged exception is re-raised below.
+            # The cause is reported first; sanitized because a startup error can
+            # carry a URL with credentials. A non-Exception is reported by type only.
+            if isinstance(startup_exc, Exception):
+                outcome = "failed"
+                logger.error("Startup failed ({exc}); closing what was opened", exc=_sanitize_exc(startup_exc))
+            else:
+                outcome = "interrupted"
+                logger.error(
+                    "Startup interrupted ({exc}); closing what was opened", exc=type(startup_exc).__name__
                 )
-            all_clients[app_type] = clients
 
-        # --- Expose all shared state on app.state ---
-        app.state.triggarr_state = state
-        app.state.settings = settings
-        app.state.db = db
-        app.state.scheduler = scheduler
-        app.state.radarr_clients = all_clients.get("radarr", {})
-        app.state.sonarr_clients = all_clients.get("sonarr", {})
-        app.state.lidarr_clients = all_clients.get("lidarr", {})
-        app.state.config_path = config_path
-        app.state.state_path = state_path
-        # search_lock serializes (a) search cycles in scheduler.make_search_job and
-        # (b) every config-save call to _atomic_toml_write in triggarr.web.routes.
-        # SAFETY-05 (Assumption A1): this asyncio.Lock is correct only because
-        # Triggarr runs a single uvicorn worker (__main__.py constructs uvicorn.Config
-        # without workers=N). Adding --workers >1 would silently break serialization
-        # because asyncio.Lock is per-event-loop. If you ever introduce multi-worker
-        # uvicorn, replace this with a file-level lock (fcntl.flock) or a process-level
-        # primitive. Verified statically by tests/audit_lock_coverage.py (AST audit of
-        # routes.py) and dynamically by
-        # tests/test_web.py::test_concurrent_settings_save_serialized.
-        app.state.search_lock = asyncio.Lock()
-        # WR-05: `app.state` is starlette.datastructures.State -- a
-        # SimpleNamespace-like __dict__ container with no class slot to
-        # attach __annotations__. Inline `: type = value` annotations on
-        # these attributes were misleading: they are discarded at runtime
-        # and not stored anywhere consultable. Document the intended types
-        # in comments instead so readers do not infer enforcement that
-        # does not exist.
-        # last_search_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
-        app.state.last_search_time = {}
-        # last_refresh_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
-        # Sibling rate-limit dict for the refresh_counts endpoint (D-08, Phase 74).
-        # Independent of last_search_time so a count refresh and a manual search
-        # do not rate-limit each other.
-        app.state.last_refresh_time = {}
-        # reset_token: tuple[str, float] | None  (CSPRNG token string, expiry as monotonic ts)
-        # Set by reset_request_post, consumed and cleared by reset_confirm_post.
-        # A container restart sets this to None, invalidating any pending reset token (D-04, D-18).
-        app.state.reset_token = None
-        # last_reset_time: dict[str, float]  (key: "request"/"confirm", value: monotonic ts)
-        # Rate-limit gate for both reset endpoints (D-14, D-15).
-        app.state.last_reset_time = {}
-        app.state.last_health_check = None
-        # SAFETY-03: per-job consecutive-failure counter keyed by
-        # f"{app_name}_{instance_name}_search". Incremented when the engine
-        # cycle returns with connected=False or when the narrow-tuple cycle
-        # catch fires; reset on cycle success.
-        # search_failures: dict[str, int]
-        app.state.search_failures = {}
-        # SAFETY-03 (Codex finding 2): set to True when save_state raises
-        # OSError/aiosqlite.Error mid-persistence. Observable state only in
-        # this phase; future phase may surface via /health endpoint.
-        # persistence_degraded: bool
-        app.state.persistence_degraded = False
-        # RES-01 (Codex finding 3): tuple[str, float] | None holding the
-        # currently-running cycle's (job_id, monotonic_start). Set INSIDE
-        # `async with search_lock` in make_search_job; cleared in the same
-        # block's finally. Read by the shutdown drain to log which instance
-        # is stuck and how long it's been running.
-        # search_lock_holder: tuple[str, float] | None
-        app.state.search_lock_holder = None
-        # RES-03 (D-05): tag-list cache keyed by (app_name, instance_name).
-        # value: (tags: list[Tag], fetched_at: float) where fetched_at is
-        # time.monotonic() at the moment of a successful get_tags() fetch.
-        # Read+populated by the resolver built in make_search_job's job()
-        # closure (and by search_now in routes). Invalidated on instance config
-        # save for changed instances; cleared on remove_instance. Only
-        # successful fetches are stored (no negative caching — D-07).
-        # tag_cache: dict[tuple[str, str], tuple[list, float]]
-        app.state.tag_cache = {}
+            # A cancellation that arrives during cleanup is held, not allowed to
+            # stop the remaining steps; it is re-raised once every step has run.
+            cleanup_cancel: asyncio.CancelledError | None = None
 
-        # Import update_info dict once at lifespan start (not inside job)
-        # to avoid circular import during scheduler ticks.
-        from triggarr.web.routes import update_info as _update_info
+            # Stop the scheduler first so no job runs against clients about to close.
+            try:
+                scheduler_stopped = await _stop_scheduler_if_running("Startup cleanup", scheduler)
+            except asyncio.CancelledError as cancel:
+                scheduler_stopped = False
+                cleanup_cancel = cancel
 
-        app.state.update_info = _update_info
-
-        # Sync auth_state at startup so the nav bar logout link renders
-        # correctly for users whose session cookie is still valid after restart.
-        from triggarr.web.routes import _sync_auth_state
-
-        _sync_auth_state(settings)
-
-        # --- Schedule jobs for enabled instances using make_search_job ---
-        for app_name in APP_TYPES:
-            for inst_name, cfg in settings.get_enabled_instances(app_name).items():
-                job_fn = make_search_job(app, app_name, inst_name, state_path)
-                job_id = f"{app_name}_{inst_name}_search"
-                scheduler.add_job(
-                    job_fn,
-                    "interval",
-                    minutes=cfg.search_interval,
-                    id=job_id,
-                    next_run_time=datetime.now(UTC),
+            connections_closed = 0
+            for app_type, inst_name, client in reversed(created_clients):
+                closed, cancel = await _close_through_cancellation(
+                    "Startup cleanup", f"{app_type.title()}/{inst_name!r} connection", client.close
                 )
-                logger.info(
-                    "Scheduled {app}/{instance} search every {interval}m (first run: now)",
-                    app=app_name.title(),
-                    instance=inst_name,
-                    interval=cfg.search_interval,
-                )
+                if closed:
+                    connections_closed += 1
+                cleanup_cancel = cleanup_cancel or cancel
+            db_closed = False
+            if db is not None:
+                db_closed, cancel = await _close_through_cancellation("Startup cleanup", "database", db.close)
+                cleanup_cancel = cleanup_cancel or cancel
 
-        # SAFETY-02: surface non-narrow-tuple exceptions that propagate out of
-        # make_search_job (RuntimeError, KeyError, etc.) by routing them through
-        # the EVENT_JOB_ERROR listener instead of APScheduler's silent default.
-        scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
-        scheduler.start()
-
-        async def update_check_job() -> None:
-            result = await check_for_update()
-            if result is not None:
-                app.state.update_info.update(result)
-                if result["update_available"]:
-                    logger.info("Update available: v{version}", version=result["latest_version"])
-
-        scheduler.add_job(
-            update_check_job,
-            "interval",
-            hours=24,
-            id="update_check",
-            next_run_time=datetime.now(UTC),
-        )
+            parts = ["the scheduler"] if scheduler_stopped else []
+            if db_closed:
+                parts.append("the database")
+            parts.append(f"{connections_closed} connection(s)")
+            logger.error(
+                "Startup {outcome}; closed {closed} before exiting", outcome=outcome, closed=_describe_closed(parts)
+            )
+            # A cancellation during cleanup must not be swallowed. It takes over from
+            # an ordinary startup error (chained as its cause); an
+            # original cancellation or interrupt is re-raised unchanged.
+            if cleanup_cancel is not None and isinstance(startup_exc, Exception):
+                raise cleanup_cancel from startup_exc
+            raise
 
         try:
             yield
         finally:
             # 1. Stop scheduler from scheduling new jobs (does NOT wait for async jobs)
-            scheduler.shutdown(wait=False)
+            _safe_stop_scheduler("Shutdown", scheduler)
 
             # 2. Drain any in-flight search cycle before closing resources (DEBT-06)
             # DEBT-06 (D-05): resolve drain timeout from config at shutdown time
@@ -709,12 +965,23 @@ def create_lifespan(
             # not have this race: the acquire() runs in the caller's
             # frame, so a cancel propagates as CancelledError before any
             # state is committed.
+            #
+            # WR-02: a cancellation that arrives during the drain or any close
+            # below is held, not allowed to skip the remaining steps (an open
+            # database keeps its non-daemon worker thread alive and the process
+            # from exiting); it is re-raised once every step has run.
+            shutdown_cancel: asyncio.CancelledError | None = None
             acquired = False
             try:
                 try:
                     async with asyncio.timeout(drain):
                         await app.state.search_lock.acquire()
                         acquired = True
+                except asyncio.CancelledError as cancel:
+                    # The lock-holding search cycle may still be mid-write;
+                    # closing anyway is preferred over leaving the process hung.
+                    shutdown_cancel = cancel
+                    logger.warning("Shutdown: drain interrupted by cancellation; closing anyway")
                 except TimeoutError:
                     # Re-read holder defensively: a race could have cleared
                     # it if the cycle finished but a different caller
@@ -744,14 +1011,24 @@ def create_lifespan(
                 if acquired:
                     app.state.search_lock.release()
 
-            # 3. Close HTTP clients (all instances)
+            # 3. Close HTTP clients (all instances). Each close is isolated and
+            # capped via _safe_close (LIFE-02): one failing or hung close never
+            # stops the remaining clients or the database from closing, and a
+            # cancellation meanwhile is held until the database is closed (WR-02).
             for app_type in APP_TYPES:
-                for client in getattr(app.state, f"{app_type}_clients", {}).values():
-                    await client.close()
+                for inst_name, client in getattr(app.state, f"{app_type}_clients", {}).items():
+                    _, cancel = await _close_through_cancellation(
+                        "Shutdown", f"{app_type.title()}/{inst_name!r} connection", client.close
+                    )
+                    shutdown_cancel = shutdown_cancel or cancel
 
             # 4. Close shared database connection (all writes complete per step 2)
-            await app.state.db.close()
+            _, cancel = await _close_through_cancellation("Shutdown", "database", app.state.db.close)
+            shutdown_cancel = shutdown_cancel or cancel
 
             logger.info("Search engine stopped")
+            # Never swallow a cancellation: re-raise it once every step has run.
+            if shutdown_cancel is not None:
+                raise shutdown_cancel
 
     return lifespan

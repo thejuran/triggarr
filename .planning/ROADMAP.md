@@ -237,7 +237,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 **Goal:** Keep scheduled searching and saved state correct through failed writes, ambiguous network responses, partial startup and shutdown.
 
 - [x] **Phase 87: Settings & State-File Safety** (merged 2026-11-16, PR #62) - A failed settings write during instance removal never corrupts live state, and a non-object state file recovers instead of crashing
-- [ ] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix (both plans executed and verified locally 2026-11-17; PR and owner acceptance pending)
+- [x] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** (merged 2026-11-17, PR #63) - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix
 - [ ] **Phase 89: Startup & Shutdown Resource Cleanup** - A partial startup closes what it opened, and one failed client close never blocks the rest from closing
 - [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name
 - [ ] **Phase 91: Search-Command Delivery Confidence** - A timed-out search command is never blindly resent, and an unconfirmed outcome is tracked honestly instead of silently passing or failing
@@ -287,7 +287,13 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
   1. When startup fails partway through, Triggarr closes the database and every connection already opened, and the process exits promptly rather than hanging.
   2. When one *arr connection fails to close at shutdown, the remaining connections and the database still close, and the failure is logged sanitized.
   3. After a failed startup, the scheduler is not left running.
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
+
+**Wave 1**
+- [x] 89-01-PLAN.md â€” shared non-raising, 5s-capped close helpers; at shutdown one client's failed or hung close never stops the remaining clients or the database from closing, logged as one sanitized warning (LIFE-02)
+
+**Wave 2** *(blocked on Wave 1: 89-01; same files)*
+- [x] 89-02-PLAN.md â€” a startup that fails after the database opens closes the database and every client built so far, stops the scheduler only if it was started, logs one summary line and re-raises the original error; the aiosqlite worker thread is proven stopped (LIFE-01, LIFE-03)
 
 ### Phase 90: Removed-Instance Pending-Search Lifecycle
 **Goal**: A removed Sonarr instance's leftover pending searches get a defined, visible end state, and a reused instance name never inherits them.
@@ -343,8 +349,8 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 | 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
-| 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | In review (verified locally; PR and owner acceptance pending) | - |
-| 89. Startup & Shutdown Resource Cleanup | TBD | Not started | - |
+| 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Complete (merged PR #63) | 2026-11-17 |
+| 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; local review and verifier (22/22) finished; in review, PR not yet opened | - |
 | 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |
 | 92. Built-Image Recovery Demonstration | TBD | Not started | - |

@@ -1,0 +1,100 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "8bd4781c2f02550c727b365759d7c87cb45728bb",
+  "inspected_base_sha": "d7704342b5978adc6ce883b20b6648dff3e1753a",
+  "pr_url": "none",
+  "scope": "Phase 88 full scoped diff, including both changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects identified. Reviewed backup retention, interrupted-copy cleanup, error handling, telemetry startup coverage, and execution plans. Harness evidence reports 3351 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "All changes in triggarr/db.py, tests/test_db.py, tests/test_telemetry.py, README.md, and .planning/config.json.",
+    "Both changed plans: 88-01-PLAN.md and 88-02-PLAN.md.",
+    "Backup selection, canonical preservation, clock rollback, pre-copy capacity reclamation, partial-copy failure, abandoned staging files, listing/unlink errors, and migration continuation.",
+    "Startup callers, migration transactions, test fixtures, single-process deployment assumptions, locked telemetry dependencies, and FastAPI telemetry dispatch.",
+    "Regression assertions, test isolation, and plan acceptance/security requirements; no CI or publication-policy weakening identified."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    ".planning/**/codex/** and .planning/**/*.jsonl.",
+    "Files outside the working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkpoint."
+    },
+    {
+      "command": "git cat-file -e d7704342b5978adc6ce883b20b6648dff3e1753a",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff --stat d7704342b5978adc6ce883b20b6648dff3e1753a..8bd4781c2f02550c727b365759d7c87cb45728bb -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..8bd4781c2f02550c727b365759d7c87cb45728bb -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Review changed execution plans."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..8bd4781c2f02550c727b365759d7c87cb45728bb -- triggarr/db.py tests/test_telemetry.py README.md .planning/config.json",
+      "exit_code": 0,
+      "purpose": "Review implementation, telemetry test, documentation, and configuration."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect harness test evidence and head attribution."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..8bd4781c2f02550c727b365759d7c87cb45728bb -- tests/test_db.py",
+      "exit_code": 0,
+      "purpose": "Review backup regression tests."
+    },
+    {
+      "command": "git diff d7704342b5978adc6ce883b20b6648dff3e1753a..8bd4781c2f02550c727b365759d7c87cb45728bb -- tests/test_db.py | head -190",
+      "exit_code": 0,
+      "purpose": "Recover test diff text truncated from earlier output."
+    },
+    {
+      "command": "sed -n '155,230p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect remaining failure-handling instructions and acceptance requirements."
+    },
+    {
+      "command": "sed -n '1,178p' triggarr/db.py; sed -n '292,420p' triggarr/db.py; rg -n 'init_db|journal_mode|connect\\(|workers|uvicorn|create_lifespan' triggarr/search/scheduler.py triggarr/__main__.py Dockerfile docker-compose.yml pyproject.toml tests/migration_faults.py; sed -n '1,95p' tests/migration_faults.py; cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Trace migration transactions, callers, fixtures, and dependencies."
+    },
+    {
+      "command": "sed -n '137,155p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md; rg -n 'fastapi|opentelemetry' uv.lock; git status --short; rg --files -g '*python*' -g '*pytest*' .venv",
+      "exit_code": 1,
+      "purpose": "Inspect plan acceptance checks, dependency pins, and working-copy state; final file search returned no matches."
+    },
+    {
+      "command": "sed -n '460,530p' triggarr/search/scheduler.py; sed -n '550,570p' triggarr/search/scheduler.py; sed -n '38,90p' triggarr/__main__.py; rg -n 'async def init_db|run_migrations' triggarr/db.py; sed -n '770,830p' triggarr/db.py; sed -n '1,100p' Dockerfile; ls -ld .venv .venv/bin/python .venv/bin/pytest",
+      "exit_code": 0,
+      "purpose": "Inspect startup sequencing, deployment assumptions, initialization, and local test runtime availability."
+    },
+    {
+      "command": "git diff --name-only d7704342b5978adc6ce883b20b6648dff3e1753a..8bd4781c2f02550c727b365759d7c87cb45728bb -- ':(glob).planning/**/*-PLAN.md'; git diff --check d7704342b5978adc6ce883b20b6648dff3e1753a..8bd4781c2f02550c727b365759d7c87cb45728bb",
+      "exit_code": 0,
+      "purpose": "Confirm complete plan inventory and check diff whitespace."
+    },
+    {
+      "command": "sed -n '130,138p' .planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-01-PLAN.md; sed -n '65,86p' triggarr/__main__.py; rg -n 'async def health|def health' triggarr/web/routes.py; rg -n 'auto_configure|automatic telemetry configuration failed|OTEL_SDK_DISABLED' .venv/lib/python3.13/site-packages/fastapi/telemetry/_runtime.py .venv/lib/python3.13/site-packages/fastapi/applications.py",
+      "exit_code": 0,
+      "purpose": "Complete truncated context and verify telemetry construction and failure-log path."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently execute pytest: the sandbox is read-only, tests require filesystem writes, and the local Python executable resolves outside the permitted working copy. Used the supplied exact-head harness evidence.",
+    "Disk-full, process-kill, and concurrent-process scenarios were assessed through code and regression-test inspection, not independently reproduced."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

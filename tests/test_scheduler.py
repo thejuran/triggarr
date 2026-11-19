@@ -8,11 +8,14 @@ and tracking integration after search cycles (Plan 20-03).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
 import io
 import re
 import shutil
+import threading
 import time
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1961,6 +1964,10 @@ class _FakeScheduler:
     def start(self) -> None:
         self.started = True
 
+    @property
+    def running(self) -> bool:
+        return self.started and self.shutdown_wait is None
+
     def shutdown(self, wait: bool = True) -> None:
         self.shutdown_wait = wait
 
@@ -2342,3 +2349,1122 @@ async def test_lifespan_restart_after_legacy_import_neither_reimports_nor_moves_
     assert len(first[0]) == 1
     assert second == first
     assert [name for _, name in second[1]] == ["Old Show S01", "Old Show S02", "Old Movie"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 89: startup/shutdown resource cleanup (LIFE-01..03)
+# ---------------------------------------------------------------------------
+
+_CAP = "triggarr.search.scheduler._CLEANUP_STEP_TIMEOUT"
+
+
+def _capture_sink(level: str = "WARNING") -> tuple[io.StringIO, int]:
+    sink = io.StringIO()
+    return sink, logger.add(sink, format="{level} | {message}", level=level)
+
+
+def _sink_lines(sink: io.StringIO) -> list[str]:
+    return [line for line in sink.getvalue().splitlines() if line.strip()]
+
+
+def test_cleanup_step_timeout_default_is_5s():
+    from triggarr.search.scheduler import _CLEANUP_STEP_TIMEOUT
+
+    assert _CLEANUP_STEP_TIMEOUT == 5.0
+    assert isinstance(_CLEANUP_STEP_TIMEOUT, float)
+
+
+async def test_safe_close_returns_true_on_success():
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    close_fn = AsyncMock()
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = await _safe_close("Shutdown", "database", close_fn)
+    finally:
+        logger.remove(sink_id)
+    assert result is True
+    close_fn.assert_awaited_once()
+    assert _sink_lines(sink) == []
+    assert len(_ABANDONED_CLOSE_TASKS) == 0
+
+
+async def test_safe_close_logs_sanitized_warning_and_returns_false_on_exception():
+    from triggarr.search.scheduler import _safe_close
+
+    close_fn = AsyncMock(side_effect=AssertionError("in-flight close"))
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = await _safe_close("Shutdown", "Sonarr/'anime' connection", close_fn)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    lines = _sink_lines(sink)
+    warnings = [line for line in lines if line.startswith("WARNING | ")]
+    assert warnings == ["WARNING | Shutdown: could not close Sonarr/'anime' connection (AssertionError); continuing"]
+    assert "in-flight close" not in sink.getvalue()
+
+
+async def test_safe_close_never_logs_url_credentials():
+    from triggarr.search.scheduler import _safe_close
+
+    exc = httpx.ConnectError("boom", request=httpx.Request("GET", "http://sonarr:8989/api?apikey=SECRET-KEY-123"))
+    close_fn = AsyncMock(side_effect=exc)
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = await _safe_close("Shutdown", "Sonarr/'Default' connection", close_fn)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    output = sink.getvalue()
+    assert "SECRET-KEY-123" not in output
+    assert "apikey" not in output
+    warnings = [line for line in _sink_lines(sink) if line.startswith("WARNING | ")]
+    assert len(warnings) == 1
+    assert "HTTP error: ConnectError" in warnings[0]
+
+
+async def test_safe_close_times_out_and_continues():
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    async def close_fn():
+        await asyncio.Event().wait()
+
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        with patch(_CAP, 0.05):
+            start = time.monotonic()
+            result = await _safe_close("Shutdown", "database", close_fn)
+            elapsed = time.monotonic() - start
+        await asyncio.sleep(0.05)
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    assert elapsed < 1.0
+    assert _sink_lines(sink) == ["WARNING | Shutdown: database did not close within 0.05s; continuing"]
+    assert remaining == 0
+
+
+async def test_safe_close_returns_at_cap_when_close_waits_in_cancellation_finalizer():
+    # An `async with asyncio.timeout(cap): await close_fn()` implementation fails this
+    # test at "helper task is done": the awaiting task cannot finish while the close
+    # keeps waiting in its own cancellation finalizer (aiosqlite's close() does this).
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    release = asyncio.Event()
+    in_finalizer = asyncio.Event()
+
+    async def close_fn():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            in_finalizer.set()
+            await release.wait()
+
+    sink, sink_id = _capture_sink("WARNING")
+    helper = None
+    try:
+        with patch(_CAP, 0.05):
+            start = time.monotonic()
+            helper = asyncio.ensure_future(_safe_close("Shutdown", "database", close_fn))
+            await asyncio.wait({helper}, timeout=2.0)
+            elapsed = time.monotonic() - start
+            helper_done = helper.done()
+            result = helper.result() if helper_done and not helper.cancelled() else None
+            await asyncio.sleep(0.01)
+            finalizer_reached = in_finalizer.is_set()
+            abandoned = list(_ABANDONED_CLOSE_TASKS)
+            abandoned_pending = [not t.done() for t in abandoned]
+            next_result = await _safe_close("Shutdown", "next step", AsyncMock())
+        warnings = [line for line in _sink_lines(sink) if line.startswith("WARNING | ")]
+        release.set()
+        if abandoned:
+            await asyncio.wait(abandoned, timeout=2.0)
+        after_done = [t.done() for t in abandoned]
+        after_len = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        release.set()
+        if helper is not None and not helper.done():
+            helper.cancel()
+            await asyncio.wait({helper}, timeout=2.0)
+        pending = [t for t in _ABANDONED_CLOSE_TASKS if not t.done()]
+        if pending:
+            await asyncio.wait(pending, timeout=2.0)
+        logger.remove(sink_id)
+    assert helper_done, "helper task is done"
+    assert result is False
+    assert elapsed < 1.0
+    assert finalizer_reached
+    assert len(abandoned) == 1 and abandoned_pending == [True]
+    assert next_result is True
+    assert warnings == ["WARNING | Shutdown: database did not close within 0.05s; continuing"]
+    assert after_done == [True]
+    assert after_len == 0
+
+
+async def test_safe_close_observes_late_failure_of_abandoned_close():
+    import gc
+
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    release = asyncio.Event()
+
+    async def close_fn():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await release.wait()
+            raise RuntimeError("late boom http://x/?apikey=SECRET-KEY-123")
+
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    contexts: list[dict] = []
+    loop.set_exception_handler(lambda _loop, ctx: contexts.append(ctx))
+    sink, sink_id = _capture_sink("DEBUG")
+    helper = None
+    try:
+        with patch(_CAP, 0.05):
+            helper = asyncio.ensure_future(_safe_close("Shutdown", "database", close_fn))
+            await asyncio.wait({helper}, timeout=2.0)
+        abandoned = list(_ABANDONED_CLOSE_TASKS)
+        release.set()
+        if abandoned:
+            await asyncio.wait(abandoned, timeout=2.0)
+        await asyncio.sleep(0.01)
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+        del abandoned
+        helper = None
+        gc.collect()
+        await asyncio.sleep(0)
+        output = sink.getvalue()
+        lines = _sink_lines(sink)
+    finally:
+        release.set()
+        loop.set_exception_handler(previous_handler)
+        logger.remove(sink_id)
+    assert remaining == 0
+    assert [line for line in lines if line.startswith("WARNING | ")] == [
+        "WARNING | Shutdown: database did not close within 0.05s; continuing"
+    ]
+    assert "late boom" not in output
+    assert "SECRET-KEY-123" not in output
+    assert [line for line in lines if line.startswith("DEBUG | ")] == [
+        "DEBUG | Shutdown: abandoned close of database ended after the cap (RuntimeError)"
+    ]
+    assert not any("never retrieved" in str(c.get("message", "")) for c in contexts), contexts
+
+
+async def test_safe_close_retrieves_close_failure_when_caller_is_cancelled():
+    # An implementation that attaches its result observer only `if not task.done()` in
+    # the `finally:` fails this test at the "never retrieved" assertion: the context
+    # message "Task exception was never retrieved" carries the raw RuntimeError text
+    # (probe on Python 3.11.14, 2026-11-18).
+    import gc
+
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    gate = asyncio.Event()
+    parked = asyncio.Event()
+
+    async def close_fn():
+        parked.set()
+        await gate.wait()
+        raise RuntimeError("boom http://x/?apikey=SECRET-KEY-123")
+
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    contexts: list[dict] = []
+    loop.set_exception_handler(lambda _loop, ctx: contexts.append(ctx))
+    sink, sink_id = _capture_sink("DEBUG")
+    cancelled = False
+    try:
+        helper = asyncio.ensure_future(_safe_close("Shutdown", "database", close_fn))
+        await parked.wait()
+        gate.set()
+        helper.cancel()
+        try:
+            await helper
+        except asyncio.CancelledError:
+            cancelled = True
+        del helper
+        for _ in range(2):
+            gc.collect()
+            await asyncio.sleep(0)
+        output = sink.getvalue()
+        lines = _sink_lines(sink)
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        gate.set()
+        loop.set_exception_handler(previous_handler)
+        logger.remove(sink_id)
+    assert cancelled is True
+    assert not any("never retrieved" in str(c.get("message", "")) for c in contexts), contexts
+    for secret in ("SECRET-KEY-123", "apikey", "boom"):
+        assert secret not in output
+        assert not any(secret in repr(c) for c in contexts)
+    assert [line for line in lines if line.startswith("WARNING | ")] == [
+        "WARNING | Shutdown: could not close database (RuntimeError); continuing"
+    ]
+    assert remaining == 0
+
+
+async def test_safe_close_returns_at_cap_on_wedged_real_aiosqlite_close(tmp_path):
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, _safe_close
+
+    conn = await aiosqlite.connect(tmp_path / "wedge.db")
+    gate = threading.Event()
+    wedge = asyncio.ensure_future(conn._execute(gate.wait))
+    helper = None
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        await asyncio.sleep(0.05)
+        with patch(_CAP, 0.2):
+            start = time.monotonic()
+            helper = asyncio.ensure_future(_safe_close("Shutdown", "database", conn.close))
+            await asyncio.wait({helper}, timeout=3.0)
+            elapsed = time.monotonic() - start
+        helper_done = helper.done()
+        result = helper.result() if helper_done and not helper.cancelled() else None
+        warnings = [line for line in _sink_lines(sink) if line.startswith("WARNING | ")]
+        thread_alive_wedged = conn._thread.is_alive()
+        abandoned = list(_ABANDONED_CLOSE_TASKS)
+        gate.set()
+        await asyncio.wait({wedge}, timeout=3.0)
+        if abandoned:
+            await asyncio.wait(abandoned, timeout=3.0)
+        await asyncio.to_thread(conn._thread.join, 2.0)
+        thread_alive_after = conn._thread.is_alive()
+        remaining = len(_ABANDONED_CLOSE_TASKS)
+    finally:
+        gate.set()
+        await asyncio.wait({wedge}, timeout=3.0)
+        pending = [t for t in _ABANDONED_CLOSE_TASKS if not t.done()]
+        if pending:
+            await asyncio.wait(pending, timeout=3.0)
+        if conn._thread.is_alive():
+            closer = asyncio.ensure_future(aiosqlite.Connection.close(conn))
+            await asyncio.wait({closer}, timeout=3.0)
+            await asyncio.to_thread(conn._thread.join, 2.0)
+        logger.remove(sink_id)
+    assert helper_done
+    assert result is False
+    assert elapsed < 1.5
+    assert len(warnings) == 1 and "database" in warnings[0]
+    assert thread_alive_wedged is True
+    assert thread_alive_after is False
+    assert remaining == 0
+
+
+def test_safe_stop_scheduler_logs_warning_when_shutdown_raises():
+    from triggarr.search.scheduler import _safe_stop_scheduler
+
+    class _Boom(_FakeScheduler):
+        def shutdown(self, wait: bool = True) -> None:
+            raise RuntimeError("scheduler boom")
+
+    ok = _FakeScheduler()
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        result = _safe_stop_scheduler("Shutdown", _Boom())
+        ok_result = _safe_stop_scheduler("Shutdown", ok)
+    finally:
+        logger.remove(sink_id)
+    assert result is False
+    assert _sink_lines(sink) == ["WARNING | Shutdown: could not stop the scheduler (RuntimeError); continuing"]
+    assert ok_result is True
+    assert ok.shutdown_wait is False
+
+
+def _spy_connect(captured: list, hook=None):
+    """Return a stand-in for aiosqlite.connect that records every Connection it opens."""
+    real_connect = aiosqlite.connect
+
+    def spy(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        if hook is not None:
+            hook(conn)
+        captured.append(conn)
+        return conn
+
+    return spy
+
+
+@dataclass
+class _LifespanObservation:
+    exc: BaseException | None
+    reached_yield: bool
+    exit_timed_out: bool
+    elapsed: float
+    scheduler_running: bool
+    scheduler_shutdown_wait: bool | None
+    clients_closed: list[bool] = field(default_factory=list)
+    worker_alive: list[bool] = field(default_factory=list)
+    lines: list[str] = field(default_factory=list)
+    rescue_errors: list[str] = field(default_factory=list)
+
+
+async def _observe_lifespan(
+    settings,
+    tmp_path,
+    scheduler,
+    *,
+    body=None,
+    tracked=None,
+    gates=(),
+    connect_hook=None,
+    log_level="INFO",
+    deadline=10.0,
+) -> _LifespanObservation:
+    """Drive the lifespan, observe its end state, then rescue every resource.
+
+    Stages are strictly ordered: DRIVE (owned task under a deadline), OBSERVE
+    (no assertions, nothing raises), RESCUE (unconditional, exception-safe).
+    Tests assert only against the returned observation.
+    """
+    from triggarr.search.scheduler import _ABANDONED_CLOSE_TASKS, create_lifespan
+
+    tracked = tracked if tracked is not None else []
+    captured: list = []
+    rescue_errors: list[str] = []
+    sink, sink_id = _capture_sink(log_level)
+    reached = [False]
+    task = None
+    obs = None
+    with contextlib.ExitStack() as stack:
+        try:
+            stack.enter_context(
+                patch("triggarr.search.scheduler.aiosqlite.connect", side_effect=_spy_connect(captured, connect_hook))
+            )
+            stack.enter_context(patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=scheduler))
+            lifespan_fn = create_lifespan(settings, tmp_path / "state.json", tmp_path / "triggarr.toml")
+            app = FastAPI(lifespan=lifespan_fn)
+
+            async def drive():
+                async with lifespan_fn(app):
+                    reached[0] = True
+                    if body is not None:
+                        await body(app)
+
+            start = time.monotonic()
+            task = asyncio.ensure_future(drive())
+            await asyncio.wait({task}, timeout=deadline)
+            elapsed = time.monotonic() - start
+            exit_timed_out = not task.done()
+            exc: BaseException | None = None
+            if task.done():
+                exc = asyncio.CancelledError() if task.cancelled() else task.exception()
+
+            scheduler_running = bool(getattr(scheduler, "running", False))
+            scheduler_shutdown_wait = getattr(scheduler, "shutdown_wait", None)
+            clients_closed: list[bool] = []
+            for client in tracked:
+                try:
+                    clients_closed.append(bool(client._client.is_closed))
+                except Exception as err:
+                    rescue_errors.append(type(err).__name__)
+                    clients_closed.append(False)
+            worker_alive: list[bool] = []
+            for conn in captured:
+                try:
+                    thread = conn._thread
+                    if thread.ident is not None:
+                        await asyncio.to_thread(thread.join, 2.0)
+                    worker_alive.append(thread.is_alive())
+                except Exception as err:
+                    rescue_errors.append(type(err).__name__)
+                    worker_alive.append(False)
+            lines = _sink_lines(sink)
+            obs = _LifespanObservation(
+                exc=exc,
+                reached_yield=reached[0],
+                exit_timed_out=exit_timed_out,
+                elapsed=elapsed,
+                scheduler_running=scheduler_running,
+                scheduler_shutdown_wait=scheduler_shutdown_wait,
+                clients_closed=clients_closed,
+                worker_alive=worker_alive,
+                lines=lines,
+                rescue_errors=rescue_errors,
+            )
+        finally:
+            for gate in gates:
+                with contextlib.suppress(Exception):
+                    gate.set()
+            try:
+                if task is not None and not task.done():
+                    await asyncio.wait({task}, timeout=5.0)
+                    if not task.done():
+                        task.cancel()
+                        await asyncio.wait({task}, timeout=2.0)
+            except Exception as err:
+                rescue_errors.append(type(err).__name__)
+            try:
+                if getattr(scheduler, "running", False):
+                    scheduler.shutdown(wait=False)
+                    await asyncio.sleep(0)
+            except Exception as err:
+                rescue_errors.append(type(err).__name__)
+            for client in tracked:
+                try:
+                    await client._client.aclose()
+                except Exception as err:
+                    rescue_errors.append(type(err).__name__)
+            for conn in captured:
+                try:
+                    if conn._thread.is_alive():
+                        closer = asyncio.ensure_future(aiosqlite.Connection.close(conn))
+                        await asyncio.wait({closer}, timeout=2.0)
+                        await asyncio.to_thread(conn._thread.join, 2.0)
+                except Exception as err:
+                    rescue_errors.append(type(err).__name__)
+            try:
+                pending = [t for t in _ABANDONED_CLOSE_TASKS if not t.done()]
+                if pending:
+                    await asyncio.wait(pending, timeout=2.0)
+            except Exception as err:
+                rescue_errors.append(type(err).__name__)
+            logger.remove(sink_id)
+    assert obs is not None
+    obs.rescue_errors = rescue_errors
+    return obs
+
+
+def _track_all_clients(app, tracked: list) -> dict:
+    clients = {
+        "radarr": app.state.radarr_clients["Default"],
+        "sonarr": app.state.sonarr_clients["Default"],
+        "lidarr": app.state.lidarr_clients["Default"],
+    }
+    tracked.extend(clients.values())
+    return clients
+
+
+async def test_shutdown_continues_when_client_close_fails(tmp_path):
+    tracked: list = []
+
+    async def body(app):
+        clients = _track_all_clients(app, tracked)
+        clients["radarr"].close = AsyncMock(side_effect=AssertionError("in-flight close"))
+
+    obs = await _observe_lifespan(make_settings(), tmp_path, _FakeScheduler(), body=body, tracked=tracked)
+    assert obs.exc is None, f"lifespan exit raised {obs.exc!r}"
+    assert obs.exit_timed_out is False
+    assert obs.scheduler_shutdown_wait is False
+    assert obs.clients_closed == [False, True, True]
+    assert obs.worker_alive == [False]
+    warning = "WARNING | Shutdown: could not close Radarr/'Default' connection (AssertionError); continuing"
+    assert [line for line in obs.lines if line.startswith("WARNING | Shutdown:")] == [warning]
+    assert not any("in-flight close" in line for line in obs.lines)
+    stopped = "INFO | Search engine stopped"
+    assert stopped in obs.lines
+    assert obs.lines.index(stopped) > obs.lines.index(warning)
+    assert not any(line.startswith("ERROR | ") for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_shutdown_continues_when_db_close_fails(tmp_path):
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+
+    async def body(app):
+        app.state.db.close = AsyncMock(side_effect=OSError(5, "Input/output error"))
+
+    obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), body=body)
+    assert obs.exc is None, f"lifespan exit raised {obs.exc!r}"
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
+    assert warnings == ["WARNING | Shutdown: could not close database (OSError); continuing"]
+    assert not any("Input/output error" in line for line in obs.lines)
+    assert obs.lines[-1] == "INFO | Search engine stopped"
+    assert not any(line.startswith("ERROR | ") for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_shutdown_abandons_hung_client_close_after_cap(tmp_path):
+    tracked: list = []
+    hang = asyncio.Event()
+    release = asyncio.Event()
+
+    async def hung_close():
+        try:
+            await hang.wait()
+        finally:
+            await release.wait()
+
+    async def body(app):
+        clients = _track_all_clients(app, tracked)
+        clients["sonarr"].close = hung_close
+
+    with patch(_CAP, 0.05):
+        obs = await _observe_lifespan(
+            make_settings(), tmp_path, _FakeScheduler(), body=body, tracked=tracked, gates=(hang, release), deadline=2.0
+        )
+    assert obs.exit_timed_out is False, "lifespan exit did not finish within the deadline"
+    assert obs.exc is None
+    assert obs.elapsed < 2.0
+    assert obs.clients_closed == [True, False, True]
+    assert obs.worker_alive == [False]
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
+    assert warnings == ["WARNING | Shutdown: Sonarr/'Default' connection did not close within 0.05s; continuing"]
+    assert "INFO | Search engine stopped" in obs.lines
+    assert obs.rescue_errors == []
+
+
+async def test_shutdown_order_is_unchanged(tmp_path):
+    order: list[str] = []
+
+    class _OrderScheduler(_FakeScheduler):
+        def shutdown(self, wait: bool = True) -> None:
+            order.append("scheduler")
+            super().shutdown(wait)
+
+    tracked: list = []
+
+    def recording(name: str, real_close):
+        async def close():
+            order.append(name)
+            await real_close()
+
+        return close
+
+    async def body(app):
+        clients = _track_all_clients(app, tracked)
+        for app_type, client in clients.items():
+            client.close = recording(app_type, client.close)
+        app.state.db.close = recording("db", app.state.db.close)
+
+    obs = await _observe_lifespan(make_settings(), tmp_path, _OrderScheduler(), body=body, tracked=tracked)
+    assert obs.exc is None
+    assert order == ["scheduler", "radarr", "sonarr", "lidarr", "db"]
+    assert obs.rescue_errors == []
+
+
+# ---------------------------------------------------------------------------
+# Failed startup: release everything opened so far (LIFE-01, LIFE-03)
+# ---------------------------------------------------------------------------
+
+_CAUSE = "ERROR | Startup failed (RuntimeError); closing what was opened"
+
+
+def _summary(text: str) -> str:
+    return f"ERROR | Startup failed; closed {text} before exiting"
+
+
+def _recording_factory(cls, record: list, fail_on_call: int | None = None, after_build=None):
+    """Build a client constructor stand-in that records instances and can fail on the Nth call."""
+    calls = [0]
+
+    def factory(**kwargs):
+        calls[0] += 1
+        if fail_on_call is not None and calls[0] == fail_on_call:
+            raise RuntimeError("simulated client construction failure")
+        instance = cls(**kwargs)
+        if after_build is not None:
+            after_build(instance)
+        record.append(instance)
+        return instance
+
+    return factory
+
+
+class _FailingStartScheduler(_FakeScheduler):
+    """start() fails before the scheduler ever reaches the running state."""
+
+    def start(self) -> None:
+        raise RuntimeError("simulated scheduler start failure")
+
+
+def _failed_startup_lines(obs: _LifespanObservation) -> list[str]:
+    assert _CAUSE in obs.lines, obs.lines
+    return obs.lines[obs.lines.index(_CAUSE):]
+
+
+def _common_failed_startup_asserts(obs: _LifespanObservation) -> None:
+    assert obs.reached_yield is False
+    assert obs.exit_timed_out is False
+
+
+async def test_startup_failure_init_db_closes_database_and_reraises(tmp_path):
+    injected = RuntimeError("simulated upgrade failure")
+    fake = _FakeScheduler()
+    with patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=injected)):
+        obs = await _observe_lifespan(make_settings(), tmp_path, fake, log_level="WARNING")
+    assert obs.exc is injected
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 0 connection(s)")]
+    assert not any("simulated upgrade failure" in line for line in obs.lines)
+    assert fake.started is False
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cutover_closes_database(tmp_path):
+    tracked: list = []
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with (
+        patch(
+            "triggarr.search.scheduler.ensure_cutover_recorded",
+            new=AsyncMock(side_effect=RuntimeError("simulated cutover failure")),
+        ),
+        patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated cutover failure"
+    _common_failed_startup_asserts(obs)
+    assert tracked == []
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 0 connection(s)")]
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_client_construction_closes_earlier_clients(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    tracked: list = []
+    settings = Settings(
+        radarr={"Default": InstanceConfig(url="http://radarr:7878", api_key="radarr-test-key", enabled=True)},
+        sonarr={
+            "First": InstanceConfig(url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True),
+            "Second": InstanceConfig(url="http://sonarr2:8989", api_key="sonarr-test-key-2", enabled=True),
+        },
+    )
+    with (
+        patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)),
+        patch(
+            "triggarr.search.scheduler.SonarrClient",
+            side_effect=_recording_factory(SonarrClient, tracked, fail_on_call=2),
+        ),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated client construction failure"
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True, True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 2 connection(s)")]
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_scheduler_not_started_no_shutdown_call(tmp_path):
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.schedulers.base import STATE_STOPPED
+
+    real = AsyncIOScheduler()
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+    injected = RuntimeError("simulated upgrade failure")
+    with patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=injected)):
+        obs = await _observe_lifespan(settings, tmp_path, real, log_level="WARNING")
+    assert obs.exc is injected
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    assert obs.scheduler_running is False
+    assert real.state == STATE_STOPPED
+    assert not any("SchedulerNotRunningError" in line for line in obs.lines)
+    assert not any(line.startswith("WARNING | Startup") for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cleanup_also_fails_still_raises_original(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    tracked: list = []
+    fake = _FailingStartScheduler()
+    settings = make_settings(lidarr_enabled=False)
+    with (
+        patch(
+            "triggarr.search.scheduler.RadarrClient",
+            side_effect=_recording_factory(
+                RadarrClient,
+                tracked,
+                after_build=lambda c: setattr(c, "close", AsyncMock(side_effect=AssertionError("close boom"))),
+            ),
+        ),
+        patch("triggarr.search.scheduler.SonarrClient", side_effect=_recording_factory(SonarrClient, tracked)),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, fake, tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated scheduler start failure"
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [False, True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [
+        _CAUSE,
+        "WARNING | Startup cleanup: could not close Radarr/'Default' connection (AssertionError); continuing",
+        _summary("the database and 1 connection(s)"),
+    ]
+    assert not any("close boom" in line or "simulated scheduler start failure" in line for line in obs.lines)
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cleanup_also_fails_on_db_close(tmp_path):
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+    with patch(
+        "triggarr.search.scheduler.ensure_cutover_recorded",
+        new=AsyncMock(side_effect=RuntimeError("simulated cutover failure")),
+    ):
+        obs = await _observe_lifespan(
+            settings,
+            tmp_path,
+            _FakeScheduler(),
+            connect_hook=lambda conn: setattr(conn, "close", AsyncMock(side_effect=OSError(5, "Input/output error"))),
+            log_level="WARNING",
+        )
+    assert type(obs.exc) is RuntimeError
+    _common_failed_startup_asserts(obs)
+    assert _CAUSE in obs.lines
+    assert _failed_startup_lines(obs) == [
+        _CAUSE,
+        "WARNING | Startup cleanup: could not close database (OSError); continuing",
+        _summary("0 connection(s)"),
+    ]
+    assert not any("Input/output error" in line for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_cause_line_never_logs_credentials(tmp_path):
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+    leaking = httpx.ConnectError(
+        "boom", request=httpx.Request("GET", "http://sonarr:8989/api?apikey=SECRET-KEY-123")
+    )
+    with patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=leaking)):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), log_level="WARNING")
+    assert obs.exc is leaking
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    cause = "ERROR | Startup failed (HTTP error: ConnectError); closing what was opened"
+    assert cause in obs.lines
+    assert obs.lines[obs.lines.index(cause):] == [cause, _summary("the database and 0 connection(s)")]
+    assert not any("SECRET-KEY-123" in line or "apikey" in line for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_scheduler_started_shuts_scheduler_down(tmp_path):
+    class _FailingUpdateCheckScheduler(_FakeScheduler):
+        def add_job(self, *args, **kwargs) -> None:
+            if kwargs.get("id") == "update_check":
+                raise RuntimeError("simulated add_job failure")
+            super().add_job(*args, **kwargs)
+
+    tracked: list = []
+    fake = _FailingUpdateCheckScheduler()
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)):
+        obs = await _observe_lifespan(settings, tmp_path, fake, tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    assert str(obs.exc) == "simulated add_job failure"
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True]
+    assert obs.worker_alive == [False]
+    assert fake.started is True
+    assert obs.scheduler_shutdown_wait is False
+    assert obs.scheduler_running is False
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the scheduler, the database and 1 connection(s)")]
+    assert len([j for j in fake.jobs if j[1].get("id") == "radarr_Default_search"]) == 1
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_partial_scheduler_start_is_stopped(tmp_path):
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.schedulers.base import STATE_STOPPED
+
+    class _PartialStartScheduler(AsyncIOScheduler):
+        # BaseScheduler.start() sets STATE_RUNNING and only then calls wakeup(),
+        # so start() raises with the scheduler already running. A flag set only
+        # after start() returns would miss this case.
+        def __init__(self) -> None:
+            super().__init__()
+            self.injected = RuntimeError("simulated wakeup failure")
+
+        def wakeup(self) -> None:
+            raise self.injected
+
+    tracked: list = []
+    real = _PartialStartScheduler()
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)):
+        obs = await _observe_lifespan(settings, tmp_path, real, tracked=tracked, log_level="WARNING")
+    assert obs.exc is real.injected
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True]
+    assert obs.worker_alive == [False]
+    assert obs.scheduler_running is False
+    assert real.state == STATE_STOPPED
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the scheduler, the database and 1 connection(s)")]
+    assert not any("SchedulerNotRunningError" in line for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_startup_failure_scheduler_start_raises_no_shutdown_call(tmp_path):
+    tracked: list = []
+    fake = _FailingStartScheduler()
+    settings = make_settings(sonarr_enabled=False, lidarr_enabled=False)
+    with patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)):
+        obs = await _observe_lifespan(settings, tmp_path, fake, tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is RuntimeError
+    _common_failed_startup_asserts(obs)
+    assert fake.started is False
+    assert obs.scheduler_shutdown_wait is None
+    assert obs.clients_closed == [True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [_CAUSE, _summary("the database and 1 connection(s)")]
+    assert obs.rescue_errors == []
+
+
+async def test_stop_scheduler_if_running_reports_a_scheduler_that_stays_running():
+    from triggarr.search.scheduler import _stop_scheduler_if_running
+
+    class _StuckScheduler(_FakeScheduler):
+        started = True
+
+        @property
+        def running(self) -> bool:
+            return True
+
+    sink, sink_id = _capture_sink("WARNING")
+    try:
+        stuck = _StuckScheduler()
+        assert await _stop_scheduler_if_running("Startup cleanup", stuck) is False
+        assert stuck.shutdown_wait is False
+        assert _sink_lines(sink) == ["WARNING | Startup cleanup: the scheduler did not stop; continuing"]
+
+        sink.truncate(0)
+        sink.seek(0)
+        started = _FakeScheduler()
+        started.started = True
+        assert await _stop_scheduler_if_running("Startup cleanup", started) is True
+        assert _sink_lines(sink) == []
+
+        never = _FakeScheduler()
+        assert await _stop_scheduler_if_running("Startup cleanup", never) is False
+        assert never.shutdown_wait is None
+        assert _sink_lines(sink) == []
+    finally:
+        logger.remove(sink_id)
+
+
+# ---------------------------------------------------------------------------
+# Failed startup by cancellation or interrupt (Phase 89 review WR-01)
+# ---------------------------------------------------------------------------
+
+
+class _StartupInterrupt(BaseException):
+    """A non-Exception interrupt that, unlike KeyboardInterrupt/SystemExit, asyncio
+    stores on the task instead of re-raising out of the event loop."""
+
+
+async def test_startup_cancelled_during_init_db_still_closes_database(tmp_path):
+    async def cancelled_init_db(*args, **kwargs):
+        # Cancel the lifespan's own task while it awaits this upgrade step, as an
+        # outer timeout or a harness tearing the app down would.
+        asyncio.current_task().cancel()
+        await asyncio.sleep(10)
+
+    fake = _FakeScheduler()
+    with patch("triggarr.search.scheduler.init_db", new=cancelled_init_db):
+        obs = await _observe_lifespan(make_settings(), tmp_path, fake, log_level="WARNING")
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    _common_failed_startup_asserts(obs)
+    assert obs.worker_alive == [False]
+    cause = "ERROR | Startup interrupted (CancelledError); closing what was opened"
+    assert cause in obs.lines, obs.lines
+    assert obs.lines[obs.lines.index(cause):] == [
+        cause,
+        "ERROR | Startup interrupted; closed the database and 0 connection(s) before exiting",
+    ]
+    assert fake.started is False
+    assert obs.rescue_errors == []
+
+
+async def test_startup_interrupt_during_client_construction_closes_earlier_clients(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    tracked: list = []
+    calls = [0]
+
+    def interrupting_sonarr(**kwargs):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise _StartupInterrupt()
+        instance = SonarrClient(**kwargs)
+        tracked.append(instance)
+        return instance
+
+    settings = Settings(
+        radarr={"Default": InstanceConfig(url="http://radarr:7878", api_key="radarr-test-key", enabled=True)},
+        sonarr={
+            "First": InstanceConfig(url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True),
+            "Second": InstanceConfig(url="http://sonarr2:8989", api_key="sonarr-test-key-2", enabled=True),
+        },
+    )
+    with (
+        patch("triggarr.search.scheduler.RadarrClient", side_effect=_recording_factory(RadarrClient, tracked)),
+        patch("triggarr.search.scheduler.SonarrClient", side_effect=interrupting_sonarr),
+    ):
+        obs = await _observe_lifespan(settings, tmp_path, _FakeScheduler(), tracked=tracked, log_level="WARNING")
+    assert type(obs.exc) is _StartupInterrupt
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True, True]
+    assert obs.worker_alive == [False]
+    cause = "ERROR | Startup interrupted (_StartupInterrupt); closing what was opened"
+    assert cause in obs.lines, obs.lines
+    assert obs.lines[obs.lines.index(cause):] == [
+        cause,
+        "ERROR | Startup interrupted; closed the database and 2 connection(s) before exiting",
+    ]
+    assert obs.rescue_errors == []
+
+
+async def test_startup_cleanup_cancelled_midway_still_closes_remaining_steps_database_last(tmp_path):
+    from triggarr.clients.sonarr import SonarrClient
+
+    owner: list[asyncio.Task] = []
+    order: list[str] = []
+
+    class _OwnerRecordingFailingStart(_FailingStartScheduler):
+        def start(self) -> None:
+            owner.append(asyncio.current_task())
+            super().start()
+
+    def recording(name: str, real_close, cancel_owner: bool = False):
+        async def close():
+            order.append(name)
+            await real_close()
+            if cancel_owner:
+                # A cancellation of the lifespan arrives while cleanup is
+                # waiting on this close.
+                owner[0].cancel()
+                await asyncio.sleep(0)
+
+        return close
+
+    tracked: list = []
+    settings = make_settings(lidarr_enabled=False)
+    with (
+        patch(
+            "triggarr.search.scheduler.RadarrClient",
+            side_effect=_recording_factory(
+                RadarrClient, tracked, after_build=lambda c: setattr(c, "close", recording("radarr", c.close))
+            ),
+        ),
+        patch(
+            "triggarr.search.scheduler.SonarrClient",
+            side_effect=_recording_factory(
+                SonarrClient,
+                tracked,
+                after_build=lambda c: setattr(c, "close", recording("sonarr", c.close, cancel_owner=True)),
+            ),
+        ),
+    ):
+        obs = await _observe_lifespan(
+            settings,
+            tmp_path,
+            _OwnerRecordingFailingStart(),
+            tracked=tracked,
+            connect_hook=lambda conn: setattr(conn, "close", recording("db", conn.close)),
+            log_level="WARNING",
+        )
+    # Cleanup closes clients newest first, then the database.
+    assert order == ["sonarr", "radarr", "db"]
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    _common_failed_startup_asserts(obs)
+    assert obs.clients_closed == [True, True]
+    assert obs.worker_alive == [False]
+    assert _failed_startup_lines(obs) == [
+        _CAUSE,
+        "WARNING | Startup cleanup: closing Sonarr/'Default' connection was interrupted by cancellation; continuing",
+        _summary("the database and 1 connection(s)"),
+    ]
+    assert not any("simulated scheduler start failure" in line for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+# ---------------------------------------------------------------------------
+# Shutdown cancelled partway (Phase 89 review WR-02)
+# ---------------------------------------------------------------------------
+
+
+def _recording_close(order: list[str], name: str, real_close, on_close=None):
+    async def close():
+        order.append(name)
+        await real_close()
+        if on_close is not None:
+            on_close()
+            await asyncio.sleep(0)
+
+    return close
+
+
+class _CancelOwnerOnAcquireLock:
+    """Stands in for the search lock at shutdown: the drain's acquire cancels the
+    lifespan's own task, then waits on the real (held) lock, as an outer timeout
+    or a harness tearing the app down mid-drain would."""
+
+    def __init__(self, held: asyncio.Lock, owner: asyncio.Task) -> None:
+        self._held = held
+        self._owner = owner
+
+    async def acquire(self) -> bool:
+        self._owner.cancel()
+        return await self._held.acquire()
+
+    def release(self) -> None:
+        self._held.release()
+
+
+async def test_shutdown_cancelled_during_drain_still_closes_clients_and_database(tmp_path):
+    order: list[str] = []
+    tracked: list = []
+
+    async def body(app):
+        clients = _track_all_clients(app, tracked)
+        for app_type, client in clients.items():
+            client.close = _recording_close(order, app_type, client.close)
+        app.state.db.close = _recording_close(order, "db", app.state.db.close)
+        # A search cycle holds the lock, so the shutdown drain has to wait on it.
+        held = app.state.search_lock
+        await held.acquire()
+        app.state.search_lock = _CancelOwnerOnAcquireLock(held, asyncio.current_task())
+
+    obs = await _observe_lifespan(make_settings(), tmp_path, _FakeScheduler(), body=body, tracked=tracked)
+    assert obs.exit_timed_out is False
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    assert order == ["radarr", "sonarr", "lidarr", "db"]
+    assert obs.clients_closed == [True, True, True]
+    assert obs.worker_alive == [False]
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
+    assert warnings == ["WARNING | Shutdown: drain interrupted by cancellation; closing anyway"]
+    assert obs.lines[-1] == "INFO | Search engine stopped"
+    assert not any(line.startswith("ERROR | ") for line in obs.lines)
+    assert obs.rescue_errors == []
+
+
+async def test_shutdown_cancelled_during_client_close_still_closes_remaining_steps_database_last(tmp_path):
+    order: list[str] = []
+    tracked: list = []
+
+    async def body(app):
+        owner = asyncio.current_task()
+        clients = _track_all_clients(app, tracked)
+        for app_type, client in clients.items():
+            # The lifespan is cancelled while shutdown waits on the first client close.
+            on_close = owner.cancel if app_type == "radarr" else None
+            client.close = _recording_close(order, app_type, client.close, on_close=on_close)
+        app.state.db.close = _recording_close(order, "db", app.state.db.close)
+
+    obs = await _observe_lifespan(make_settings(), tmp_path, _FakeScheduler(), body=body, tracked=tracked)
+    assert obs.exit_timed_out is False
+    assert isinstance(obs.exc, asyncio.CancelledError)
+    assert order == ["radarr", "sonarr", "lidarr", "db"]
+    assert obs.clients_closed == [True, True, True]
+    assert obs.worker_alive == [False]
+    warnings = [line for line in obs.lines if line.startswith("WARNING | Shutdown:")]
+    assert warnings == [
+        "WARNING | Shutdown: closing Radarr/'Default' connection was interrupted by cancellation; continuing"
+    ]
+    assert obs.lines[-1] == "INFO | Search engine stopped"
+    assert not any(line.startswith("ERROR | ") for line in obs.lines)
+    assert obs.rescue_errors == []
