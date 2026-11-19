@@ -3160,7 +3160,7 @@ async def _null_outcomes(db, row_ids) -> None:
 
 def test_pending_predicate_constants():
     """The pending rule is defined once: the tuple, the removed-instance outcome and both SQL twins."""
-    from triggarr.db import OUTCOME_INSTANCE_REMOVED, PENDING_OUTCOMES, _NOT_PENDING_SQL, _PENDING_SQL
+    from triggarr.db import _NOT_PENDING_SQL, _PENDING_SQL, OUTCOME_INSTANCE_REMOVED, PENDING_OUTCOMES
 
     assert PENDING_OUTCOMES == ("searched", "partial")
     assert OUTCOME_INSTANCE_REMOVED == "instance_removed"

@@ -813,6 +813,16 @@ async def init_db(
 # ---------------------------------------------------------------------------
 
 
+# The single definition of "pending": a search still being tracked. A NULL
+# outcome counts as pending (matches the prune, the legacy rule and the display
+# layer's ``outcome or 'searched'``). Any outcome outside PENDING_OUTCOMES,
+# including OUTCOME_INSTANCE_REMOVED, is finished.
+PENDING_OUTCOMES: tuple[str, ...] = ("searched", "partial")
+OUTCOME_INSTANCE_REMOVED = "instance_removed"
+_PENDING_OUTCOMES_SQL = ", ".join(f"'{o}'" for o in PENDING_OUTCOMES)
+_PENDING_SQL = f"COALESCE(outcome, 'searched') IN ({_PENDING_OUTCOMES_SQL})"
+_NOT_PENDING_SQL = f"COALESCE(outcome, 'searched') NOT IN ({_PENDING_OUTCOMES_SQL})"
+
 # A pre-cutover pending Sonarr row is identified at query time by comparing
 # its id to the cutover's recorded legacy_max_history_id, never by writing a
 # flag onto the row. ids are AUTOINCREMENT and never reused, so this holds
@@ -820,11 +830,7 @@ async def init_db(
 # isn't sensitive to same-second ordering. Defaults to 0 (nothing is legacy)
 # when no cutover has been recorded yet.
 _LEGACY_MAX_ID_SQL = "COALESCE((SELECT legacy_max_history_id FROM attribution_cutover WHERE id = 1), 0)"
-_LEGACY_PENDING_SQL = (
-    "(app = 'Sonarr' AND COALESCE(outcome, 'searched') IN ('searched', 'partial') AND id <= "
-    + _LEGACY_MAX_ID_SQL
-    + ")"
-)
+_LEGACY_PENDING_SQL = "(app = 'Sonarr' AND " + _PENDING_SQL + " AND id <= " + _LEGACY_MAX_ID_SQL + ")"
 
 
 async def insert_search_entry(
@@ -901,14 +907,14 @@ async def insert_search_entry(
         if instance_stable_id:
             cap_query = (
                 "SELECT COUNT(*) FROM search_history "
-                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_stable_id = ? "
+                "WHERE " + _PENDING_SQL + " AND app = ? AND instance_stable_id = ? "
                 "AND NOT " + _LEGACY_PENDING_SQL
             )
             cap_params: tuple[str, str] = (app, instance_stable_id)
         else:
             cap_query = (
                 "SELECT COUNT(*) FROM search_history "
-                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_id = ? "
+                "WHERE " + _PENDING_SQL + " AND app = ? AND instance_id = ? "
                 "AND NOT " + _LEGACY_PENDING_SQL
             )
             cap_params = (app, instance_id)
@@ -951,12 +957,12 @@ async def insert_search_entry(
         # holds while it is still being credited -- are never pruned; their
         # owned grabs would otherwise be stranded uncredited.
         await db.execute(
-            """
+            f"""
             DELETE FROM search_history
-            WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
+            WHERE {_NOT_PENDING_SQL}
             AND id NOT IN (
                 SELECT id FROM search_history
-                WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
+                WHERE {_NOT_PENDING_SQL}
                 ORDER BY id DESC LIMIT ?
             )
             """,
@@ -1151,10 +1157,11 @@ async def get_trackable_entries(
     ``_LEGACY_PENDING_SQL``) are always excluded -- they are "Legacy --
     tracking discontinued" and must never be picked up again.
 
-    Sonarr callers should select by ``instance_stable_id`` so a rename or a
+    All three apps select by ``instance_stable_id`` so a rename or a
     different server reusing an old name can never misroute a pending
-    search; Radarr/Lidarr callers (out of scope for this phase) keep
-    selecting by display name.
+    search. ``instance_id`` mode remains only for counting the pending rows
+    of an instance that has no stable ID (the refuse-to-track path) and for
+    tests.
 
     Args:
         db: Open aiosqlite connection.
@@ -1180,7 +1187,7 @@ async def get_trackable_entries(
         "SELECT id, app, queue_type, item_id, season_number, missing_count, "
         "timestamp, outcome, instance_id, instance_stable_id "
         "FROM search_history "
-        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
+        "WHERE " + _PENDING_SQL + " AND item_id IS NOT NULL "
         "AND NOT " + _LEGACY_PENDING_SQL
     )
     if instance_stable_id is not None:
