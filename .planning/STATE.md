@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "Phase 89 executed and locally reviewed — in review, PR not yet opened"
-stopped_at: "Phase 89 executed; BM review round 3 (0 critical/warning), Codex at cdd1ff8d (0 findings), verifier 22/22; next: push and open the phase PR"
-last_updated: "2026-11-18T23:59:00.000Z"
-last_activity: 2026-11-18 -- Phase 89 local review finished (2 fix rounds, WR-01 + WR-02); verifier 22/22
+status: executing
+stopped_at: Phase 90 executed, reviewed and verified (final code head 22b99325); owner approved verification 2026-11-19 with 3 human checks left in 90-HUMAN-UAT.md; next is the phase PR
+last_updated: "2026-11-19T23:43:51.000Z"
+last_activity: 2026-11-19 -- Phase 90 verification approved by owner; PR next
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 33
+  completed_phases: 3
+  total_plans: 15
+  completed_plans: 15
+  percent: 50
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 89: startup-shutdown-resource-cleanup
+**Current focus:** Phase 90: removed-instance-pending-search-lifecycle
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 89 (startup-shutdown-resource-cleanup) — IN REVIEW (local, PR not yet opened)
-Plan: 2 of 2 executed (89-01 shutdown isolation, 89-02 failed-startup cleanup); fix rounds WR-01 (26a2fc8f) and WR-02 (6feac144); BM round 3: 0 critical/0 warning, 6 info + 2 set-asides to backlog (owner stopping rule); Codex trusted at cdd1ff8d: complete, 0 findings; verifier: 22/22 must-haves
-Status: Phase 89 in review (local); next: push branch and open the phase PR
-Last activity: 2026-11-18 -- Phase 89 local review finished; verifier 22/22
+Phase: 90 (removed-instance-pending-search-lifecycle) — EXECUTING
+Plan: 8 of 8 executed (phase review pending)
+Status: Executing Phase 90
+Last activity: 2026-11-19 -- Phase 90 execution started
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -45,7 +45,7 @@ Six phases derived from this milestone's 24 requirements (CONSIST, LIFE, DELIV, 
 | 87 — Settings & State-File Safety | A failed settings write during instance removal never corrupts live state; a non-object state file recovers instead of crashing | CONSIST-01..03 | — (first phase) |
 | 88 — Bounded Upgrade Backups & Telemetry Regression | Pre-upgrade backups stay capped through a crash loop; a permanent test pins the already-fixed telemetry variable | BKUP-01..02, TELEM-01..02 | — (independent; batched with 87 as equally small, isolated work) |
 | 89 — Startup & Shutdown Resource Cleanup | A partial startup closes what it opened; one failed client close never blocks the rest from closing | LIFE-01..03 | — (self-contained; sequenced after 87-88 so the reorder pattern is proven first) |
-| 90 — Removed-Instance Pending-Search Lifecycle | A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name | RMINST-01..04 | Phase 87 (same instance-removal route) |
+| 90 — Removed-Instance Pending-Search Lifecycle | A removed Sonarr, Radarr or Lidarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name | RMINST-01..04 | Phase 87 (same instance-removal route) |
 | 91 — Search-Command Delivery Confidence | A timed-out search command is never blindly resent; an unconfirmed outcome is tracked honestly | DELIV-01..07 | — (self-contained; sequenced last as the largest blast radius) |
 | 92 — Built-Image Recovery Demonstration | CI proves on the real built image that state-file corruption and repeated failed upgrades both recover correctly | SMOKE-01..03 | Phases 87-91 (validates the real fixes, written last) |
 
@@ -173,8 +173,8 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-18T23:00:55.188Z
-Stopped at: Phase 89 context gathered
+Last session: 2026-11-19T02:56:56.637Z
+Stopped at: Executed 90-08-PLAN.md (lifecycle tests and planning wording)
 Resume file: .planning/phases/89-startup-shutdown-resource-cleanup/89-CONTEXT.md
 
 ## Operator Next Steps

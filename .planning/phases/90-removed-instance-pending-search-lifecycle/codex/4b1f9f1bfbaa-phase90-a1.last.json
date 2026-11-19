@@ -1,0 +1,218 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "4b1f9f1bfbaa8f7d16fea6f0e7e6fb243d1a560d",
+  "inspected_base_sha": "4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd",
+  "pr_url": "none",
+  "scope": "Phase 90 removed-instance pending-search lifecycle, including all 13 scoped implementation/test files and eight changed phase plans.",
+  "verdict": "findings",
+  "summary": "One reproduced low-severity plan acceptance defect. No application defect identified. Harness evidence reports 3520 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "Entire scoped implementation and test diff, plus plans 90-01 through 90-08.",
+    "Pending predicates, NULL outcomes, caps, pruning, Legacy exclusions, removal details, statistics and rendering.",
+    "Removal and Save Settings callers, rollback/cancellation recovery, connection retirement/replacement and shutdown ownership.",
+    "Startup ordering, disabled instances, empty configurations, stable-ID backfill and same-name reuse.",
+    "Queued scheduled/manual searches, identity revalidation, regression assertions and deterministic race barriers.",
+    "SQL parameterization, template escaping, sanitized logging and plan acceptance policy."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    ".planning/**/codex/** and .planning/**/*.jsonl.",
+    "External files, services and live browser testing."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkpoint."
+    },
+    {
+      "command": "git cat-file -e 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..4b1f9f1bfbaa8f7d16fea6f0e7e6fb243d1a560d -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scope."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..4b1f9f1bfbaa8f7d16fea6f0e7e6fb243d1a560d -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed plans; truncated portions subsequently read individually."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- triggarr/db.py triggarr/search/scheduler.py triggarr/tracking.py triggarr/web/routes.py triggarr/templates",
+      "exit_code": 0,
+      "purpose": "Inspect production diff; truncated portions subsequently reread."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; git diff --name-only 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and plan inventory."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- triggarr/search/scheduler.py triggarr/tracking.py triggarr/templates; sed -n '1615,1688p' triggarr/db.py; git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- triggarr/db.py | tail -45",
+      "exit_code": 0,
+      "purpose": "Inspect scheduler, tracking, rendering, sweep and statistics."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Inspect route changes."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_db.py | sed -n '1,370p'",
+      "exit_code": 0,
+      "purpose": "Inspect database regression tests."
+    },
+    {
+      "command": "cat .planning/phases/90-removed-instance-pending-search-lifecycle/90-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect close-out plan; truncated middle subsequently reread."
+    },
+    {
+      "command": "sed -n '45,175p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect plan decisions and cancellation contract."
+    },
+    {
+      "command": "sed -n '735,875p' triggarr/search/scheduler.py; sed -n '1010,1165p' triggarr/search/scheduler.py; sed -n '730,875p' triggarr/web/routes.py; rg -n 'app.state.db|search_lock|run_tracking_check' triggarr/search/scheduler.py triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Trace startup, shutdown, settings and database callers."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_db.py | sed -n '371,740p'",
+      "exit_code": 0,
+      "purpose": "Inspect close-out fault-injection tests."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_db.py | sed -n '741,1100p'",
+      "exit_code": 0,
+      "purpose": "Inspect replacement and orphan-sweep tests."
+    },
+    {
+      "command": "cat .planning/phases/90-removed-instance-pending-search-lifecycle/90-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect tracking plan."
+    },
+    {
+      "command": "cat .planning/phases/90-removed-instance-pending-search-lifecycle/90-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect rendering plan."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_tracking.py tests/test_config_dir.py",
+      "exit_code": 0,
+      "purpose": "Inspect tracking assertions and fixture adjustment."
+    },
+    {
+      "command": "sed -n '1,150p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-05-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect removal-route plan."
+    },
+    {
+      "command": "sed -n '151,330p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-05-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect settings-route plan and acceptance criteria."
+    },
+    {
+      "command": "cat .planning/phases/90-removed-instance-pending-search-lifecycle/90-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect startup plan."
+    },
+    {
+      "command": "sed -n '1,145p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect queued-work plan and race requirements."
+    },
+    {
+      "command": "sed -n '146,320p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-07-PLAN.md; sed -n '1,100p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-08-PLAN.md; sed -n '180,230p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect remaining queue plan, lifecycle plan and pending-rule acceptance."
+    },
+    {
+      "command": "sed -n '100,270p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-08-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect lifecycle verification and documentation instructions."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_attribution_disclosure.py",
+      "exit_code": 0,
+      "purpose": "Inspect rendered-output regressions."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_scheduler.py; cat tests/test_removed_instance_lifecycle.py",
+      "exit_code": 0,
+      "purpose": "Inspect startup, identity and lifecycle regressions."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_web.py | sed -n '1,360p'",
+      "exit_code": 0,
+      "purpose": "Inspect removal and cancellation route tests."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_web.py | sed -n '361,720p'",
+      "exit_code": 0,
+      "purpose": "Inspect settings and connection-recovery tests."
+    },
+    {
+      "command": "git diff 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD -- tests/test_web.py | sed -n '721,1100p'",
+      "exit_code": 0,
+      "purpose": "Inspect queued-work barriers and assertions."
+    },
+    {
+      "command": "rg --files -g 'AGENTS.md' -g 'pyproject.toml' -g 'pyvenv.cfg' -g '*aiosqlite*' -g '!uv.lock' --hidden; sed -n '640,735p' triggarr/web/routes.py; sed -n '1180,1425p' triggarr/web/routes.py; sed -n '60,230p' triggarr/tracking.py",
+      "exit_code": 0,
+      "purpose": "Inspect local inventory, settings parsing, removal ordering and tracking callers."
+    },
+    {
+      "command": "rg -n 'never selected|nobody selects|selected by nobody' triggarr/; nl -ba .planning/phases/90-removed-instance-pending-search-lifecycle/90-07-PLAN.md | sed -n '194,216p'; git status --short; git diff --check 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..HEAD",
+      "exit_code": 0,
+      "purpose": "Locate acceptance defect and check worktree/diff integrity."
+    },
+    {
+      "command": "sed -n '890,1010p' triggarr/db.py; sed -n '1160,1245p' triggarr/db.py; sed -n '1720,1915p' triggarr/db.py; sed -n '1730,1778p' triggarr/web/routes.py; rg -n 'stable|backfill|def ensure_config|def load_settings' triggarr/config.py",
+      "exit_code": 0,
+      "purpose": "Trace cap, selection, statistics, route scoping and configuration identity."
+    },
+    {
+      "command": "sed -n '150,185p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-01-PLAN.md; sed -n '175,195p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-02-PLAN.md; sed -n '276,315p' triggarr/config.py; sed -n '578,630p' triggarr/config.py; sed -n '1400,1560p' triggarr/db.py; cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Complete plan inspection and verify recovery/configuration contracts."
+    },
+    {
+      "command": "grep -rniE \"never selected|nobody selects|selected by nobody\" triggarr/",
+      "exit_code": 0,
+      "purpose": "Reproduce the plan acceptance false positive."
+    },
+    {
+      "command": "sed -n '1,45p' .planning/phases/90-removed-instance-pending-search-lifecycle/90-02-PLAN.md; git rev-parse HEAD; git diff --name-only 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd..4b1f9f1bfbaa8f7d16fea6f0e7e6fb243d1a560d -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; test -x .venv/bin/python",
+      "exit_code": 0,
+      "purpose": "Complete plan coverage, reconfirm head and scope, and check local interpreter availability."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "low",
+      "title": "Narrow the queued-work acceptance check to false queued-work claims",
+      "file": ".planning/phases/90-removed-instance-pending-search-lifecycle/90-07-PLAN.md",
+      "line_start": 201,
+      "line_end": 201,
+      "trigger": "An executor runs the prescribed Phase 90-07 acceptance command.",
+      "execution_path": "The recursive grep scans all triggarr source and matches db.py:1621: 'Rows with no stable ID are never selected by any'.",
+      "consequence": "The required 'prints nothing' criterion fails on correct implementation documentation, causing a false acceptance failure or prompting removal of an accurate safety explanation.",
+      "evidence": "The exact command returned the db.py:1621 match. That statement concerns unidentified rows, not stale queued work, and agrees with the stable-ID-only tracking guards.",
+      "suggested_fix": "Restrict the check to the scheduled/manual search and removal comment blocks, or replace the broad phrase ban with a check specifically targeting the incorrect queued-work claim. Exclude generated bytecode from source checks.",
+      "reproduced": true,
+      "reproduction_command": "grep -rniE \"never selected|nobody selects|selected by nobody\" triggarr/",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Pytest was not independently rerun: the read-only sandbox prevents the suite's temporary database/configuration writes. The harness evidence identifies the exact inspected head and reports exit 0, 3520 passed, 1 skipped.",
+    "No live UI, external Arr server or real disk-failure testing was performed; these paths were assessed through source and regression-test inspection."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

@@ -19,7 +19,7 @@ import pytest
 from loguru import logger
 
 from triggarr.attribution import ensure_cutover_recorded
-from triggarr.db import get_owned_grabs, init_db, insert_search_entry
+from triggarr.db import OUTCOME_INSTANCE_REMOVED, get_owned_grabs, init_db, insert_search_entry
 from triggarr.models.arr import EpisodeSummary, GrabEvent
 from triggarr.search.engine import _sanitize_exc
 from triggarr.tracking import _lidarr_outcome, run_tracking_check
@@ -568,10 +568,10 @@ async def test_per_instance_tracking_isolation(tmp_path):
 
     # Insert entries for two different Radarr instances
     row_4k = await _insert_entry(
-        db, app="Radarr", item_id=42, instance_id="4K", timestamp=searched_at,
+        db, app="Radarr", item_id=42, instance_id="4K", instance_stable_id="sid-4k", timestamp=searched_at,
     )
     row_1080p = await _insert_entry(
-        db, app="Radarr", item_id=99, instance_id="1080p", timestamp=searched_at,
+        db, app="Radarr", item_id=99, instance_id="1080p", instance_stable_id="sid-1080p", timestamp=searched_at,
     )
 
     # Client for 4K instance — returns a grab
@@ -582,7 +582,7 @@ async def test_per_instance_tracking_isolation(tmp_path):
 
     # Run tracking for 4K only
     counts = await run_tracking_check(
-        db, radarr_4k, "Radarr", "4K", tracking_window_minutes=60, instance_stable_id="sid-test",
+        db, radarr_4k, "Radarr", "4K", tracking_window_minutes=60, instance_stable_id="sid-4k",
     )
 
     # 4K entry resolved
@@ -1296,68 +1296,194 @@ async def test_lidarr_tracking_integration(tmp_path):
     await db.close()
 
 
+
 # ---------------------------------------------------------------------------
-# Radarr/Lidarr lifetime credit follows the search row's own stable ID
+# Radarr/Lidarr select by stable ID: a reused name inherits nothing (Phase 90, D-01)
 # ---------------------------------------------------------------------------
 
+_STAT_COLUMN = {"Radarr": "movies_found", "Lidarr": "albums_found"}
 
-async def test_radarr_name_reuse_credits_the_search_rows_own_stable_id(tmp_path):
-    """A different server reusing a removed Radarr name never takes lifetime credit for the old server's search."""
+
+def _lidarr_grab(when: datetime) -> GrabEvent:
+    return GrabEvent(id=1, sourceTitle="Artist - Album [FLAC]", date=when.isoformat(), eventType="grabbed")
+
+
+def _client_returning_grab(app: str, when: datetime) -> AsyncMock:
+    client = AsyncMock()
+    grab = _grab(9001, when) if app == "Radarr" else _lidarr_grab(when)
+    client.get_grab_history = AsyncMock(return_value=[grab])
+    return client
+
+
+async def test_radarr_name_reuse_never_selects_or_credits_old_rows(tmp_path):
+    """A different server reusing a removed Radarr name never checks, resolves or credits the old search."""
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
     row_id = await _insert_entry(
         db, app="Radarr", item_id=101, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
     )
-    radarr = AsyncMock()
-    radarr.get_grab_history.return_value = [_grab(9001, searched_at + timedelta(minutes=5))]
+    radarr = _client_returning_grab("Radarr", searched_at + timedelta(minutes=5))
 
-    await run_tracking_check(db, radarr, "Radarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new")
+    counts = await run_tracking_check(
+        db, radarr, "Radarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new",
+    )
 
-    assert await _get_outcome(db, row_id) == "grabbed"
-    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-old") == 1
+    assert await _get_outcome(db, row_id) == "searched"
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-old") == 0
     assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-new") == 0
+    radarr.get_grab_history.assert_not_called()
+    assert all(v == 0 for v in counts.values())
     await db.close()
 
 
-async def test_lidarr_name_reuse_credits_the_search_rows_own_stable_id(tmp_path):
-    """Lidarr follows the same rule as Radarr: credit lands on the searching instance's stable ID."""
+async def test_lidarr_name_reuse_never_selects_or_credits_old_rows(tmp_path):
+    """Lidarr follows the same rule as Radarr."""
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
-    await _insert_entry(
+    row_id = await _insert_entry(
         db, app="Lidarr", item_id=999, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
     )
-    client = AsyncMock()
-    client.get_grab_history = AsyncMock(return_value=[
-        GrabEvent(id=1, sourceTitle="Artist - Album [FLAC]", date=(searched_at + timedelta(minutes=5)).isoformat(),
-                  eventType="grabbed"),
-    ])
+    client = _client_returning_grab("Lidarr", searched_at + timedelta(minutes=5))
 
-    await run_tracking_check(db, client, "Lidarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new")
+    counts = await run_tracking_check(
+        db, client, "Lidarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new",
+    )
 
-    assert await _get_stat(db, "Lidarr", "albums_found", instance_id="Main", instance_stable_id="sid-old") == 1
+    assert await _get_outcome(db, row_id) == "searched"
+    assert await _get_stat(db, "Lidarr", "albums_found", instance_id="Main", instance_stable_id="sid-old") == 0
     assert await _get_stat(db, "Lidarr", "albums_found", instance_id="Main", instance_stable_id="sid-new") == 0
+    client.get_grab_history.assert_not_called()
+    assert all(v == 0 for v in counts.values())
     await db.close()
 
 
-async def test_radarr_row_without_stable_id_falls_back_to_current_instance(tmp_path):
-    """Explicit legacy fallback: a pending row stored without a stable ID credits the current instance's ID."""
+async def test_sonarr_name_reuse_never_selects_or_credits_old_rows(tmp_path):
+    """Pin: Sonarr already selects by stable ID, so a reused name inherits nothing."""
+    db, _ = await _init_db(tmp_path)
+    await ensure_cutover_recorded(db, {"Main": "sid-old"})
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    row_id = await _insert_entry(
+        db, app="Sonarr", item_id=97, missing_count=1, season_number=1,
+        instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
+    )
+    sonarr = AsyncMock()
+    sonarr.get_grab_history.return_value = [
+        _grab(8701, searched_at + timedelta(minutes=1), season_number=1, series_id=97),
+    ]
+
+    await run_tracking_check(
+        db, sonarr, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new",
+    )
+
+    assert await _get_outcome(db, row_id) == "searched"
+    sonarr.get_grab_history.assert_not_called()
+    assert await _get_stat(db, "Sonarr", "episodes_found", instance_id="Main", instance_stable_id="sid-old") == 0
+    assert await _get_stat(db, "Sonarr", "episodes_found", instance_id="Main", instance_stable_id="sid-new") == 0
+    await db.close()
+
+
+async def test_radarr_name_reuse_row_without_stable_id_is_never_selected(tmp_path):
+    """A pending row with no stable ID is selected by no instance, never credited to the current holder of the name."""
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
     row_id = await _insert_entry(
         db, app="Radarr", item_id=55, instance_id="Main", instance_stable_id=None, timestamp=searched_at,
     )
-    radarr = AsyncMock()
-    radarr.get_grab_history.return_value = [_grab(9002, searched_at + timedelta(minutes=5))]
+    radarr = _client_returning_grab("Radarr", searched_at + timedelta(minutes=5))
 
     await run_tracking_check(db, radarr, "Radarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-cur")
 
-    assert await _get_outcome(db, row_id) == "grabbed"
-    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-cur") == 1
+    assert await _get_outcome(db, row_id) == "searched"
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-cur") == 0
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="") == 0
+    radarr.get_grab_history.assert_not_called()
+    await db.close()
+
+
+@pytest.mark.parametrize("app", ["Radarr", "Lidarr"])
+async def test_name_reuse_new_instance_still_tracks_its_own_rows(tmp_path, app):
+    """With rows of both instances under one name, only the tracking instance's own row resolves and is credited."""
+    db, _ = await _init_db(tmp_path)
+    col = _STAT_COLUMN[app]
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    old_row = await _insert_entry(
+        db, app=app, item_id=11, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
+    )
+    new_row = await _insert_entry(
+        db, app=app, item_id=12, instance_id="Main", instance_stable_id="sid-new", timestamp=searched_at,
+    )
+    client = _client_returning_grab(app, searched_at + timedelta(minutes=5))
+
+    await run_tracking_check(db, client, app, "Main", tracking_window_minutes=60, instance_stable_id="sid-new")
+
+    assert await _get_outcome(db, new_row) == "grabbed"
+    assert await _get_outcome(db, old_row) == "searched"
+    assert await _get_stat(db, app, col, instance_id="Main", instance_stable_id="sid-new") == 1
+    assert await _get_stat(db, app, col, instance_id="Main", instance_stable_id="sid-old") == 0
+    await db.close()
+
+
+@pytest.mark.parametrize("app", ["Radarr", "Lidarr"])
+async def test_empty_stable_id_refuses_to_track(tmp_path, app):
+    """An empty stable ID refuses to track: no selection, no request, pending rows counted as errors."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    row_ids = [
+        await _insert_entry(
+            db, app=app, item_id=item_id, instance_id="Main", instance_stable_id="sid-x", timestamp=searched_at,
+        )
+        for item_id in (21, 22)
+    ]
+    client = _client_returning_grab(app, searched_at + timedelta(minutes=5))
+
+    captured: list[str] = []
+    sink_id = logger.add(lambda m: captured.append(str(m)), level="ERROR")
+    try:
+        counts = await run_tracking_check(
+            db, client, app, "Main", tracking_window_minutes=60, instance_stable_id="",
+        )
+    finally:
+        logger.remove(sink_id)
+
+    client.get_grab_history.assert_not_called()
+    assert counts["errors"] == 2
+    assert counts["grabbed"] == 0
+    for row_id in row_ids:
+        assert await _get_outcome(db, row_id) == "searched"
+    assert len(captured) == 1
+    assert app in captured[0]
+    assert "2" in captured[0]
+    await db.close()
+
+
+@pytest.mark.parametrize("app", ["Sonarr", "Radarr", "Lidarr"])
+@pytest.mark.parametrize("track_as", ["sid-other", "sid-old"])
+async def test_name_reuse_closed_rows_never_selected(tmp_path, app, track_as):
+    """Pin: a row closed as instance_removed is never selected or credited, by anyone, including its own ID."""
+    db, _ = await _init_db(tmp_path)
+    await ensure_cutover_recorded(db, {"Main": "sid-old"})
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    row_id = await _insert_entry(
+        db, app=app, item_id=31, missing_count=1 if app == "Sonarr" else None,
+        instance_id="Main", instance_stable_id="sid-old", outcome=OUTCOME_INSTANCE_REMOVED,
+        timestamp=searched_at,
+    )
+    async with db.execute("SELECT resolved_at FROM search_history WHERE id = ?", (row_id,)) as cur:
+        resolved_before = (await cur.fetchone())[0]
+    client = AsyncMock()
+    client.get_grab_history.return_value = [_grab(8801, searched_at + timedelta(minutes=1), series_id=31)]
+
+    await run_tracking_check(db, client, app, "Main", tracking_window_minutes=60, instance_stable_id=track_as)
+
+    assert await _get_outcome(db, row_id) == OUTCOME_INSTANCE_REMOVED
+    async with db.execute("SELECT resolved_at FROM search_history WHERE id = ?", (row_id,)) as cur:
+        assert (await cur.fetchone())[0] == resolved_before
+    client.get_grab_history.assert_not_called()
     await db.close()
 
 
 async def test_radarr_name_reuse_through_real_client_keeps_card_consistent(tmp_path):
-    """Real RadarrClient path: the new server's per-instance card shows neither the old search nor its credit."""
+    """Real RadarrClient path: only the new server's own row is requested; the old row and its card stay untouched."""
     from pydantic import SecretStr
 
     from triggarr.clients.radarr import RadarrClient
@@ -1365,15 +1491,23 @@ async def test_radarr_name_reuse_through_real_client_keeps_card_consistent(tmp_p
 
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
-    await _insert_entry(
+    old_row = await _insert_entry(
         db, app="Radarr", item_id=101, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
     )
-    grab = {"id": 9001, "movieId": 101, "sourceTitle": "Movie.101.2024.1080p-GRP",
-            "date": (searched_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
-            "eventType": "grabbed", "downloadId": "DL-9001", "data": {}}
+    async with db.execute("SELECT outcome, detail, resolved_at FROM search_history WHERE id = ?", (old_row,)) as cur:
+        old_before = tuple(await cur.fetchone())
+    await _insert_entry(
+        db, app="Radarr", item_id=102, instance_id="Main", instance_stable_id="sid-new", timestamp=searched_at,
+    )
+    movie_ids: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/history/movie":
+            movie_id = request.url.params["movieId"]
+            movie_ids.append(movie_id)
+            grab = {"id": 9001, "movieId": int(movie_id), "sourceTitle": f"Movie.{movie_id}.2024.1080p-GRP",
+                    "date": (searched_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
+                    "eventType": "grabbed", "downloadId": "DL-9001", "data": {}}
             return httpx.Response(200, json=[grab])
         return httpx.Response(404, json={})
 
@@ -1384,17 +1518,22 @@ async def test_radarr_name_reuse_through_real_client_keeps_card_consistent(tmp_p
     finally:
         await client.close()
 
+    assert movie_ids
+    assert set(movie_ids) == {"102"}
+    async with db.execute("SELECT outcome, detail, resolved_at FROM search_history WHERE id = ?", (old_row,)) as cur:
+        assert tuple(await cur.fetchone()) == old_before
+    assert old_before[0] == "searched"
     new_card = await get_dashboard_stats(db, app="Radarr", instance_stable_id="sid-new")
     old_card = await get_dashboard_stats(db, app="Radarr", instance_stable_id="sid-old")
-    assert new_card["movies_found"] == 0
-    assert new_card["radarr_rate"] is None
-    assert old_card["movies_found"] == 1
-    assert old_card["radarr_rate"] == 100.0
+    assert new_card["movies_found"] == 1
+    assert new_card["radarr_rate"] == 100.0
+    assert old_card["movies_found"] == 0
+    assert old_card["radarr_rate"] == 0.0
     await db.close()
 
 
 async def test_lidarr_name_reuse_through_real_client_keeps_card_consistent(tmp_path):
-    """Real LidarrClient path (paginated /api/v1/history): credit lands on the searching instance's stable ID."""
+    """Real LidarrClient path (paginated /api/v1/history): only the new server's own row is requested."""
     from pydantic import SecretStr
 
     from triggarr.clients.lidarr import LidarrClient
@@ -1402,18 +1541,23 @@ async def test_lidarr_name_reuse_through_real_client_keeps_card_consistent(tmp_p
 
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
-    await _insert_entry(
+    old_row = await _insert_entry(
         db, app="Lidarr", item_id=202, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
     )
-    grab = {"id": 7001, "albumId": 202, "sourceTitle": "Artist - Album [FLAC]",
-            "date": (searched_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
-            "eventType": "grabbed", "downloadId": "DL-7001", "data": {}}
+    async with db.execute("SELECT outcome, detail, resolved_at FROM search_history WHERE id = ?", (old_row,)) as cur:
+        old_before = tuple(await cur.fetchone())
+    await _insert_entry(
+        db, app="Lidarr", item_id=203, instance_id="Main", instance_stable_id="sid-new", timestamp=searched_at,
+    )
     history_params: list[dict[str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v1/history":
             history_params.append(dict(request.url.params))
             page = int(request.url.params["page"])
+            grab = {"id": 7001, "albumId": int(request.url.params["albumId"]), "sourceTitle": "Artist - Album [FLAC]",
+                    "date": (searched_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
+                    "eventType": "grabbed", "downloadId": "DL-7001", "data": {}}
             records = [grab] if page == 1 else []
             return httpx.Response(200, json={"page": page, "pageSize": 50, "sortKey": "date", "totalRecords": 1,
                                              "records": records})
@@ -1426,12 +1570,16 @@ async def test_lidarr_name_reuse_through_real_client_keeps_card_consistent(tmp_p
     finally:
         await client.close()
 
-    assert history_params and history_params[0]["albumId"] == "202"
+    assert history_params and history_params[0]["albumId"] == "203"
     assert history_params[0]["eventType"] == "1"
+    assert {p["albumId"] for p in history_params} == {"203"}
+    async with db.execute("SELECT outcome, detail, resolved_at FROM search_history WHERE id = ?", (old_row,)) as cur:
+        assert tuple(await cur.fetchone()) == old_before
+    assert old_before[0] == "searched"
     new_card = await get_dashboard_stats(db, app="Lidarr", instance_stable_id="sid-new")
     old_card = await get_dashboard_stats(db, app="Lidarr", instance_stable_id="sid-old")
-    assert new_card["albums_found"] == 0
-    assert new_card["lidarr_rate"] is None
-    assert old_card["albums_found"] == 1
-    assert old_card["lidarr_rate"] == 100.0
+    assert new_card["albums_found"] == 1
+    assert new_card["lidarr_rate"] == 100.0
+    assert old_card["albums_found"] == 0
+    assert old_card["lidarr_rate"] == 0.0
     await db.close()

@@ -143,6 +143,7 @@ async def test_lifespan_derives_sqlite_path_from_injected_state_path(tmp_path: P
         patch("triggarr.search.scheduler.aiosqlite.connect", AsyncMock(return_value=fake_db)) as mock_connect,
         patch("triggarr.search.scheduler.init_db", new_callable=AsyncMock) as mock_init_db,
         patch("triggarr.search.scheduler.ensure_cutover_recorded", new_callable=AsyncMock) as mock_cutover,
+        patch("triggarr.search.scheduler.close_out_orphaned_pending_searches", new_callable=AsyncMock),
         patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=fake_scheduler),
     ):
         async with lifespan(app):

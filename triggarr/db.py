@@ -8,12 +8,14 @@ logged, version-tracked schema evolution with backup-before-migrate.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import math
 import re
 import shutil
 import sqlite3
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+import weakref
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -789,6 +791,8 @@ async def init_db(
     # Set row_factory globally so all queries return Row objects (dict-like access)
     # instead of plain tuples. This eliminates per-function row_factory mutation.
     db.row_factory = aiosqlite.Row
+    # Lets a retired connection be replaced on the same file (replace_retired_connection).
+    _CONNECTION_PATHS[db] = db_path
 
     await db.execute("""
         CREATE TABLE IF NOT EXISTS search_history (
@@ -813,6 +817,24 @@ async def init_db(
 # ---------------------------------------------------------------------------
 
 
+# The single definition of "pending": a search still being tracked. A NULL
+# outcome counts as pending (matches the prune, the legacy rule and the display
+# layer's ``outcome or 'searched'``). Any outcome outside PENDING_OUTCOMES,
+# including OUTCOME_INSTANCE_REMOVED, is finished.
+PENDING_OUTCOMES: tuple[str, ...] = ("searched", "partial")
+OUTCOME_INSTANCE_REMOVED = "instance_removed"
+INSTANCE_REMOVED_DETAIL = "instance removed"
+_PENDING_OUTCOMES_SQL = ", ".join(f"'{o}'" for o in PENDING_OUTCOMES)
+_PENDING_SQL = f"COALESCE(outcome, 'searched') IN ({_PENDING_OUTCOMES_SQL})"
+_NOT_PENDING_SQL = f"COALESCE(outcome, 'searched') NOT IN ({_PENDING_OUTCOMES_SQL})"
+
+# Connection bookkeeping for the close-out functions: connections whose rollback
+# could not be verified (closed, never to be used again) and the database file
+# each connection was initialised on (so a retired one can be replaced).
+_RETIRED_CONNECTIONS: weakref.WeakSet[aiosqlite.Connection] = weakref.WeakSet()
+_CONNECTION_PATHS: weakref.WeakKeyDictionary[aiosqlite.Connection, Path] = weakref.WeakKeyDictionary()
+_ROLLBACK_ATTEMPTS = 3
+
 # A pre-cutover pending Sonarr row is identified at query time by comparing
 # its id to the cutover's recorded legacy_max_history_id, never by writing a
 # flag onto the row. ids are AUTOINCREMENT and never reused, so this holds
@@ -820,11 +842,7 @@ async def init_db(
 # isn't sensitive to same-second ordering. Defaults to 0 (nothing is legacy)
 # when no cutover has been recorded yet.
 _LEGACY_MAX_ID_SQL = "COALESCE((SELECT legacy_max_history_id FROM attribution_cutover WHERE id = 1), 0)"
-_LEGACY_PENDING_SQL = (
-    "(app = 'Sonarr' AND COALESCE(outcome, 'searched') IN ('searched', 'partial') AND id <= "
-    + _LEGACY_MAX_ID_SQL
-    + ")"
-)
+_LEGACY_PENDING_SQL = "(app = 'Sonarr' AND " + _PENDING_SQL + " AND id <= " + _LEGACY_MAX_ID_SQL + ")"
 
 
 async def insert_search_entry(
@@ -901,14 +919,14 @@ async def insert_search_entry(
         if instance_stable_id:
             cap_query = (
                 "SELECT COUNT(*) FROM search_history "
-                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_stable_id = ? "
+                "WHERE " + _PENDING_SQL + " AND app = ? AND instance_stable_id = ? "
                 "AND NOT " + _LEGACY_PENDING_SQL
             )
             cap_params: tuple[str, str] = (app, instance_stable_id)
         else:
             cap_query = (
                 "SELECT COUNT(*) FROM search_history "
-                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_id = ? "
+                "WHERE " + _PENDING_SQL + " AND app = ? AND instance_id = ? "
                 "AND NOT " + _LEGACY_PENDING_SQL
             )
             cap_params = (app, instance_id)
@@ -951,12 +969,12 @@ async def insert_search_entry(
         # holds while it is still being credited -- are never pruned; their
         # owned grabs would otherwise be stranded uncredited.
         await db.execute(
-            """
+            f"""
             DELETE FROM search_history
-            WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
+            WHERE {_NOT_PENDING_SQL}
             AND id NOT IN (
                 SELECT id FROM search_history
-                WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
+                WHERE {_NOT_PENDING_SQL}
                 ORDER BY id DESC LIMIT ?
             )
             """,
@@ -1151,10 +1169,11 @@ async def get_trackable_entries(
     ``_LEGACY_PENDING_SQL``) are always excluded -- they are "Legacy --
     tracking discontinued" and must never be picked up again.
 
-    Sonarr callers should select by ``instance_stable_id`` so a rename or a
+    All three apps select by ``instance_stable_id`` so a rename or a
     different server reusing an old name can never misroute a pending
-    search; Radarr/Lidarr callers (out of scope for this phase) keep
-    selecting by display name.
+    search. ``instance_id`` mode remains only for counting the pending rows
+    of an instance that has no stable ID (the refuse-to-track path) and for
+    tests.
 
     Args:
         db: Open aiosqlite connection.
@@ -1180,7 +1199,7 @@ async def get_trackable_entries(
         "SELECT id, app, queue_type, item_id, season_number, missing_count, "
         "timestamp, outcome, instance_id, instance_stable_id "
         "FROM search_history "
-        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
+        "WHERE " + _PENDING_SQL + " AND item_id IS NOT NULL "
         "AND NOT " + _LEGACY_PENDING_SQL
     )
     if instance_stable_id is not None:
@@ -1203,7 +1222,9 @@ async def get_trackable_entries(
             "season_number": row["season_number"],
             "missing_count": row["missing_count"],
             "timestamp": row["timestamp"],
-            "outcome": row["outcome"],
+            # A NULL outcome is pending under _PENDING_SQL's COALESCE; hand it to
+            # tracking as 'searched' so partial progress and grab ownership apply.
+            "outcome": row["outcome"] or "searched",
             "instance_id": row["instance_id"] or "Default",
             "instance_stable_id": row["instance_stable_id"],
         }
@@ -1381,6 +1402,286 @@ async def update_outcome_and_stats(
     )
 
 
+def is_connection_retired(db: aiosqlite.Connection) -> bool:
+    """Return True when ``db`` was retired by a close-out whose rollback could not be verified.
+
+    A retired connection is closed and can never commit anything again. Callers
+    check this after any failure or cancellation of a close-out and swap in
+    ``replace_retired_connection(db)`` before using the database again.
+    """
+    return db in _RETIRED_CONNECTIONS
+
+
+async def _run_to_completion(
+    make: Callable[[], Awaitable[Any]],
+) -> tuple[BaseException | None, asyncio.CancelledError | None]:
+    """Run ``make()`` as its own task and wait for it to finish, whatever happens to the caller.
+
+    The caller may be cancelled repeatedly while waiting (cancel scopes
+    re-deliver a cancellation at every await); the wait continues and the first
+    such cancellation is returned for the caller to re-raise. Returns the
+    task's own outcome (None on success, its exception, or a ``CancelledError``
+    when the task itself ended cancelled, which is a failed attempt and not a
+    cancellation of the caller) and the caller's cancellation or None.
+    """
+    task = asyncio.ensure_future(make())
+    caller_cancelled: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if not task.cancelled() and caller_cancelled is None:
+                caller_cancelled = exc
+        except Exception:
+            pass  # the task's own error: read from the task below
+    if task.cancelled():
+        return asyncio.CancelledError(), caller_cancelled
+    return task.exception(), caller_cancelled
+
+
+async def _retire_connection(
+    db: aiosqlite.Connection, *, close_errors: list[str] | None = None,
+) -> asyncio.CancelledError | None:
+    """Mark ``db`` retired, then close it. Returns a caller cancellation received meanwhile.
+
+    Closing is the isolation: SQLite discards the uncommitted transaction of a
+    closed connection, and aiosqlite drops its handle in a ``finally`` even when
+    the close itself raises, so every later call on this object raises instead
+    of committing. The mark is set first (so it holds even if the close is
+    interrupted) and is what callers act on. The type name of a close error is
+    appended to ``close_errors`` when one is given.
+    """
+    _RETIRED_CONNECTIONS.add(db)
+    error, caller_cancelled = await _run_to_completion(db.close)
+    if error is not None and close_errors is not None:
+        close_errors.append(type(error).__name__)
+    return caller_cancelled
+
+
+async def _rollback_through_cancellation(
+    db: aiosqlite.Connection, *, context: str, original: BaseException,
+) -> asyncio.CancelledError | None:
+    """Finish the failed or cancelled transaction on ``db``; the connection ends clean or retired.
+
+    Cancelling an awaited aiosqlite call does not cancel the statement already
+    queued on the connection's worker thread, so a write can still be applied
+    and stay in an open transaction until an unrelated commit flushes it. A
+    rollback queued behind it ends the transaction, but only a rollback call
+    that completed proves that: it is run to completion, verified by reading
+    ``db.in_transaction`` straight after it, and retried (up to
+    ``_ROLLBACK_ATTEMPTS`` attempts). When no attempt is verified the connection
+    is retired (marked and closed) instead of being returned in an unknown
+    state. The post-condition is therefore "clean or retired, never unknown".
+    ``in_transaction`` is never read after a failed or cancelled attempt: that
+    statement may still be queued.
+
+    Assumes nothing else writes on this connection while a close-out runs (the
+    removal routes hold ``search_lock``; the startup sweep runs before anything
+    else starts), so a transaction still open after a completed rollback is
+    treated as not clean rather than as someone else's work.
+
+    Messages carry exception type names only, never exception text.
+    Returns the first cancellation of the caller received along the way.
+    """
+    caller_cancelled: asyncio.CancelledError | None = None
+    failures: list[str] = []
+    original_type = type(original).__name__
+    for attempt in range(1, _ROLLBACK_ATTEMPTS + 1):
+        error, cancelled = await _run_to_completion(db.rollback)
+        if cancelled is not None and caller_cancelled is None:
+            caller_cancelled = cancelled
+        if error is not None:
+            failures.append(type(error).__name__)
+            continue
+        try:
+            still_open = db.in_transaction
+        except ValueError:  # closed connection: nothing verified
+            still_open = True
+        if not still_open:
+            if attempt > 1:
+                logger.warning(
+                    "{context}: rollback succeeded on attempt {n} after {types}; original error: {original}",
+                    context=context, n=attempt, types=", ".join(failures), original=original_type,
+                )
+            return caller_cancelled
+        failures.append("StillInTransaction")
+
+    close_errors: list[str] = []
+    retire_cancelled = await _retire_connection(db, close_errors=close_errors)
+    if retire_cancelled is not None and caller_cancelled is None:
+        caller_cancelled = retire_cancelled
+    close_note = f"; close failed: {', '.join(close_errors)}" if close_errors else ""
+    logger.error(
+        "{context}: rollback could not be verified after {n} attempts ({types}); the database connection "
+        "was retired and must be replaced; original error: {original}{close_note}",
+        context=context, n=_ROLLBACK_ATTEMPTS, types=", ".join(failures), original=original_type,
+        close_note=close_note,
+    )
+    return caller_cancelled
+
+
+async def replace_retired_connection(db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Return ``db`` itself when it is healthy, or a fresh connection to the same file when retired.
+
+    The replacement has the same PRAGMAs as the application's connection and
+    ``row_factory = aiosqlite.Row``. It does not run ``init_db`` (the schema
+    exists; running migrations and their backup again is neither needed nor
+    wanted). The caller owns the returned connection and must publish it.
+
+    Raises ``aiosqlite.Error`` when no database path was recorded for ``db``;
+    an open or PRAGMA failure propagates after the half-opened connection is
+    closed.
+    """
+    if db not in _RETIRED_CONNECTIONS:
+        return db
+    path = _CONNECTION_PATHS.get(db)
+    if path is None:
+        raise aiosqlite.Error("No database path was recorded for the retired connection")
+    new_db = await aiosqlite.connect(path)
+    try:
+        await new_db.execute("PRAGMA journal_mode=WAL")
+        await new_db.execute("PRAGMA synchronous=NORMAL")
+        new_db.row_factory = aiosqlite.Row
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await new_db.close()
+        raise
+    _CONNECTION_PATHS[new_db] = path
+    logger.warning("Database connection replaced after a rollback that could not be verified")
+    return new_db
+
+
+# Close-out keeps an existing detail only on a 'partial' row (a Sonarr
+# "partial: 2/5 episodes" grab count) and appends the removal note. Every other
+# row, including a 'searched' row carrying the engine's "search triggered" and
+# rows with empty or NULL detail, gets the plain note. In an UPDATE, ``outcome``
+# on the right-hand side is the row's value before this SET is applied.
+# Takes two bound parameters, both INSTANCE_REMOVED_DETAIL.
+_CLOSE_OUT_DETAIL_SQL = (
+    "detail = CASE WHEN outcome = 'partial' AND detail IS NOT NULL AND detail != '' "
+    "THEN detail || ' (' || ? || ')' ELSE ? END"
+)
+
+
+async def close_out_removed_instance_searches(
+    db: aiosqlite.Connection, *, app: str, instance_stable_id: str, instance_id: str,
+) -> int:
+    """Give every pending search of a removed instance the final ``instance_removed`` outcome.
+
+    Keyed on ``app`` and the row's own stable ID only, never on the display
+    name. ``instance_id`` is the display name and is used for the log line.
+    No network call and no final grab check. Legacy rows and finished rows are
+    never rewritten; lifetime stats and grab ownership are left as they are.
+
+    On return the write is fully committed. On raise (including cancellation)
+    the write was rolled back and that was verified, or, when the rollback could
+    not be verified, the connection was retired (closed;
+    ``is_connection_retired(db)`` is True) so the abandoned changes can never be
+    committed; the caller must then swap in ``replace_retired_connection(db)``
+    before using the database again. Either way a caller holding a lock across
+    this call holds it until the database cleanup has finished.
+
+    Returns the number of rows closed.
+    """
+    if not instance_stable_id:
+        return 0  # never close by display name: it can be shared or reused
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    try:
+        cursor = await db.execute(
+            f"UPDATE search_history SET outcome = ?, {_CLOSE_OUT_DETAIL_SQL}, resolved_at = ? "  # noqa: S608
+            f"WHERE app = ? AND instance_stable_id = ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",
+            (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, INSTANCE_REMOVED_DETAIL, now, app, instance_stable_id),
+        )
+        closed = cursor.rowcount
+        await db.commit()
+    except BaseException as exc:  # includes cancellation: see _rollback_through_cancellation
+        cancelled = await _rollback_through_cancellation(
+            db, context="close_out_removed_instance_searches", original=exc,
+        )
+        if cancelled is not None and not isinstance(exc, asyncio.CancelledError):
+            raise cancelled from exc
+        raise
+    logger.info("Closed out {n} pending search(es) of removed {app}/{inst}", n=closed, app=app, inst=instance_id)
+    return closed
+
+
+async def close_out_orphaned_pending_searches(
+    db: aiosqlite.Connection, *, configured: Collection[tuple[str, str]],
+) -> int:
+    """Give every pending search that no configured instance owns the ``instance_removed`` outcome.
+
+    A search is an orphan when its stable ID is missing or its (stored title-case
+    app, stable ID) pair is not in ``configured``. Legacy rows, finished rows and
+    rows of configured pairs are never touched, so repeating the sweep is safe.
+    No selection or update uses a display name.
+
+    Caller contract: run after ``ensure_cutover_recorded`` (Legacy is defined by
+    the recorded cutover), and pass every configured instance, disabled ones
+    included. An empty collection is valid and means no instance is configured:
+    every pending, non-Legacy search is then closed. There is deliberately no
+    guard on the size of the set. A missing, corrupt or invalid configuration
+    stops the process in ``ensure_config`` before the sweep can run, so the sweep
+    only ever sees a validated configuration; a valid configuration with no
+    instances is what remains after the last instance is removed (including when
+    that removal's close-out failed after the settings write), which is the case
+    this sweep repairs. Rows with no stable ID are never selected by any
+    instance. This includes the item-less rows imported from ``state.json``,
+    which may belong to a configured instance; they are closed by decision A1.
+    No migration does this, because a migration cannot
+    see the cutover and would not repair a close-out that failed later.
+
+    The transaction is finalized and verified before any error or cancellation
+    surfaces; when that cannot be verified the connection is retired
+    (``is_connection_retired(db)``) and the caller replaces it with
+    ``replace_retired_connection(db)``.
+
+    Returns the number of rows closed.
+    """
+    configured_pairs = set(configured)
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    total = 0
+    try:
+        async with db.execute(
+            "SELECT app, instance_stable_id, COUNT(*) FROM search_history "  # noqa: S608
+            f"WHERE {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL} GROUP BY app, instance_stable_id",
+        ) as cursor:
+            groups = [(r[0], r[1], r[2]) for r in await cursor.fetchall()]
+        orphans: list[tuple[str, str | None]] = []
+        per_app: dict[str, int] = {}
+        for app, stable_id, count in groups:
+            if stable_id and (app, stable_id) in configured_pairs:
+                continue
+            orphans.append((app, stable_id))
+            per_app[app] = per_app.get(app, 0) + count
+        for app, count in per_app.items():
+            logger.info(
+                "Startup: closing {n} pending search(es) of {app} as Instance removed "
+                "(no configured instance owns them)",
+                n=count, app=app,
+            )
+        for app, stable_id in orphans:
+            update = await db.execute(
+                f"UPDATE search_history SET outcome = ?, {_CLOSE_OUT_DETAIL_SQL}, resolved_at = ? "  # noqa: S608
+                f"WHERE app = ? AND instance_stable_id IS ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",
+                (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, INSTANCE_REMOVED_DETAIL, now, app, stable_id),
+            )
+            logger.debug("Orphan sweep: closed {n} pending search(es) of {app}", n=update.rowcount, app=app)
+            total += update.rowcount
+        await db.commit()
+    except BaseException as exc:  # includes cancellation: see _rollback_through_cancellation
+        cancelled = await _rollback_through_cancellation(
+            db, context="close_out_orphaned_pending_searches", original=exc,
+        )
+        if cancelled is not None and not isinstance(exc, asyncio.CancelledError):
+            raise cancelled from exc
+        raise
+    if total:
+        logger.info("Startup: closed {n} orphaned pending search(es) of removed instances", n=total)
+    else:
+        logger.debug("Startup: no orphaned pending searches to close")
+    return total
+
+
 async def get_owned_grabs(
     db: aiosqlite.Connection, *, app: str, instance_stable_id: str, series_id: int,
 ) -> list[OwnedGrabRecord]:
@@ -1499,13 +1800,16 @@ async def get_dashboard_stats(
     # 1. Effectiveness: grab rate per app. Frozen legacy pending rows are
     # excluded from both the per-app and overall denominators (D-07) --
     # they are untracked outcomes, not confirmed misses. Resolved
-    # historical rows stay in, covered by the disclosure.
+    # historical rows stay in, covered by the disclosure. Searches of a removed
+    # instance have an unknown real outcome, so like Legacy rows they leave both
+    # the numerator and the denominator.
     async with db.execute(
         "SELECT app, "
         "SUM(CASE WHEN outcome IN ('grabbed', 'partial', 'partial_expired') THEN 1 ELSE 0 END) AS grabbed_count, "
         "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
         "FROM search_history "
         f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
+        f"AND outcome != '{OUTCOME_INSTANCE_REMOVED}' "
         "GROUP BY app",
         inst_params,
     ) as cursor:
@@ -1586,6 +1890,7 @@ async def get_dashboard_stats(
         "SELECT EXISTS("
         "SELECT 1 FROM search_history "
         f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
+        f"AND outcome != '{OUTCOME_INSTANCE_REMOVED}' "
         f"AND app = 'Sonarr' AND outcome != 'failed' AND id <= {_LEGACY_MAX_ID_SQL}"
         ")",
         inst_params,

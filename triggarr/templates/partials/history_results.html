@@ -79,7 +79,7 @@
       {# Outcome filter #}
       <div class="flex items-center gap-2">
         <span class="text-xs text-triggarr-muted">Outcome:</span>
-        {% for o_val in ['searched', 'grabbed', 'partial', 'unresolved', 'failed'] %}
+        {% for o_val in ['searched', 'grabbed', 'partial', 'unresolved', 'failed', 'instance_removed'] %}
           {% if o_val in active_outcomes %}
             {% set new_outcomes = active_outcomes | reject('equalto', o_val) | list | join(',') %}
           {% else %}
@@ -93,12 +93,13 @@
                       {% if o_val == 'grabbed' %}bg-green-500/20 text-green-400
                       {% elif o_val == 'partial' %}bg-amber-500/20 text-amber-400
                       {% elif o_val == 'unresolved' %}bg-gray-500/20 text-gray-400
+                      {% elif o_val == 'instance_removed' %}bg-gray-500/20 text-gray-400
                       {% elif o_val == 'failed' %}bg-red-500/20 text-red-400
                       {% else %}bg-blue-500/20 text-blue-400{% endif %}
                     {% else %}
                       bg-triggarr-card text-triggarr-muted border border-triggarr-border hover:text-white
                     {% endif %}">
-            {{ o_val }}
+            {{ 'Instance removed' if o_val == 'instance_removed' else o_val }}
           </a>
         {% endfor %}
       </div>
@@ -144,17 +145,19 @@
           <span class="text-xs text-triggarr-muted">{{ entry.queue_type }}</span>
           <span class="text-xs px-1.5 py-0.5 rounded
                  {% if entry.is_legacy %}bg-gray-500/20 text-gray-400
+                 {% elif entry.outcome == 'instance_removed' %}bg-gray-500/20 text-gray-400
                  {% elif entry.outcome == 'grabbed' %}bg-green-500/20 text-green-400
                  {% elif entry.outcome in ('partial', 'partial_expired') %}bg-amber-500/20 text-amber-400
                  {% elif entry.outcome == 'unresolved' %}bg-gray-500/20 text-gray-400
                  {% elif entry.outcome == 'failed' %}bg-red-500/20 text-red-400
                  {% else %}bg-blue-500/20 text-blue-400{% endif %}"
                  {% if entry.is_legacy %}title="Searched before the attribution fix; outcome no longer tracked"
+                 {% elif entry.outcome == 'instance_removed' %}title="This instance was removed before the search finished; it will not be checked again."
                  {% elif entry.outcome == 'grabbed' %}title="Download detected within tracking window"
                  {% elif entry.outcome in ('partial', 'partial_expired') %}title="Some episodes grabbed, not all"
                  {% elif entry.outcome == 'unresolved' %}title="No grabs detected before window expired"
                  {% endif %}>
-            {% if entry.is_legacy %}Legacy — tracking discontinued{% else %}{{ 'partial' if entry.outcome == 'partial_expired' else (entry.outcome or 'searched') }}{% endif %}
+            {% if entry.is_legacy %}Legacy — tracking discontinued{% elif entry.outcome == 'instance_removed' %}Instance removed{% else %}{{ 'partial' if entry.outcome == 'partial_expired' else (entry.outcome or 'searched') }}{% endif %}
           </span>
           <span class="text-xs text-triggarr-muted">{{ entry.timestamp[:19] | replace('T', ' ') }}</span>
         </div>

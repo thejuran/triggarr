@@ -24,7 +24,7 @@ import aiosqlite
 import httpx
 import jinja2
 import pydantic
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -47,7 +47,14 @@ from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.config import _atomic_toml_write, _settings_to_dict, load_settings, new_instance_id
-from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
+from triggarr.db import (
+    close_out_removed_instance_searches,
+    get_dashboard_stats,
+    get_recent_searches,
+    get_search_history,
+    is_connection_retired,
+    replace_retired_connection,
+)
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
 from triggarr.models.config import APP_TYPES, AuthConfig, InstanceConfig
@@ -62,6 +69,7 @@ from triggarr.search.outcome import cycle_view
 from triggarr.search.scheduler import (
     _TAG_CACHE_TTL_SECONDS,
     _cached_tags_cover_config,
+    _revalidate_queued_instance,
     _run_one_cycle,
     make_search_job,
 )
@@ -735,6 +743,7 @@ async def save_settings(request: Request) -> RedirectResponse:
     # cannot write back that request's stale pre-lock snapshot.
     # Collect stale clients to close AFTER releasing the lock (avoid holding lock during TCP teardown).
     clients_to_close: list = []
+    close_out_cancelled: asyncio.CancelledError | None = None
     async with request.app.state.search_lock:
         current_settings = request.app.state.settings
         new_settings = _settings_from_form(form, current_settings)
@@ -862,9 +871,74 @@ async def save_settings(request: Request) -> RedirectResponse:
             None, save_state, request.app.state.triggarr_state, state_path
         )
 
+        # Save Settings removes an instance that is missing from the form. The
+        # removal is already written to disk at this point (same rule as
+        # remove_instance), so the pending searches of every stable ID that left
+        # the configuration get their final outcome now. Compared by stable ID,
+        # not by name: an instance that is only disabled keeps its ID and its
+        # pending searches. This is the last step inside the lock, after state
+        # persistence, so this awaited step can never skip it. The log sinks
+        # were rebuilt from the new settings above and no longer know the
+        # removed instance's API key, so a failure line never carries exception
+        # text. A failure or interruption here is repaired by the startup check.
+        # A scheduled job or manual search that was already waiting on
+        # search_lock for a removed instance re-checks, once it holds the
+        # lock, that the instance is still configured and enabled with the
+        # same stable ID and the same client, and does nothing otherwise
+        # (_revalidate_queued_instance).
+        removed_instances: list[tuple[str, str, str]] = []
+        for name in APP_TYPES:
+            remaining_ids = {cfg.id for cfg in getattr(new_settings, name).values() if cfg.id}
+            for inst_name, old_cfg in getattr(current_settings, name).items():
+                if old_cfg.id and old_cfg.id not in remaining_ids:
+                    removed_instances.append((name, inst_name, old_cfg.id))
+        for name, inst_name, stable_id in removed_instances:
+            try:
+                # Read app.state.db anew for every call: after a replacement the
+                # next close-out must use the replacement.
+                await close_out_removed_instance_searches(
+                    request.app.state.db,
+                    app=name.title(),
+                    instance_stable_id=stable_id,
+                    instance_id=inst_name,
+                )
+            except asyncio.CancelledError as exc:
+                # Hold it: state is already persisted and the stale clients
+                # below must still be closed. The remaining close-outs are left
+                # to the startup check.
+                if close_out_cancelled is None:
+                    close_out_cancelled = exc
+            except Exception as exc:  # error boundary for post-commit cleanup
+                logger.error(
+                    "Removed {app}/{inst} via Save Settings but closing out its pending searches failed: {exc}",
+                    app=name,
+                    inst=inst_name,
+                    exc=_sanitize_exc(exc),
+                )
+            else:
+                continue
+            # The close-out failed or was interrupted: replace a retired
+            # connection before anything else touches the database.
+            replace_cancel = await _replace_retired_db(request.app)
+            if close_out_cancelled is None:
+                close_out_cancelled = replace_cancel
+            if close_out_cancelled is not None or is_connection_retired(request.app.state.db):
+                break  # no further close-out can succeed; the startup check closes what is left
+
     # Close stale clients outside the lock (TCP teardown doesn't need lock protection)
-    for c in clients_to_close:
-        await c.close()
+    if close_out_cancelled is None:
+        for c in clients_to_close:
+            await c.close()
+    else:
+        # Every close finishes even though the cancellation is re-delivered.
+        for c in clients_to_close:
+            close_error, _ = await _close_removed_client(c)
+            if close_error is not None:
+                logger.error(
+                    "Closing a replaced connection failed after Save Settings was cancelled: {exc}",
+                    exc=_sanitize_exc(close_error),
+                )
+        raise close_out_cancelled
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
@@ -1040,6 +1114,53 @@ async def _close_removed_client(client: ArrClient) -> tuple[Exception | None, as
     return error, cancelled
 
 
+async def _replace_retired_db(app: FastAPI) -> asyncio.CancelledError | None:
+    """Swap a clean connection into ``app.state.db`` when the current one was retired.
+
+    A close-out whose rollback could not be verified leaves the shared
+    connection retired: closed, and unable to commit anything again. The
+    caller must hold ``search_lock``. Routes and background jobs read
+    ``app.state.db`` when they run, and they wait on that lock, so replacing
+    the connection before the lock is released means none of them can run on
+    the retired one. In the normal case the connection is healthy and this
+    returns at once without awaiting anything.
+
+    The replacement is opened as its own task and waited for through a shield,
+    like _close_removed_client, so a cancellation received meanwhile cannot
+    abandon a half-opened connection; the first one is returned for the caller
+    to re-raise. A failure to replace is logged (exception type only) and
+    otherwise ignored: the retired connection stays in place, every later
+    database call on it fails instead of committing, and a restart recovers.
+    """
+    if not is_connection_retired(app.state.db):
+        return None
+    opening = asyncio.ensure_future(replace_retired_connection(app.state.db))
+    cancelled: asyncio.CancelledError | None = None
+    while not opening.done():
+        try:
+            await asyncio.shield(opening)
+        except asyncio.CancelledError as exc:
+            if cancelled is None:
+                cancelled = exc
+        except Exception:
+            pass  # the open's own error: read from opening below
+    if opening.cancelled():
+        error: BaseException | None = RuntimeError("opening the replacement was cancelled")
+    else:
+        error = opening.exception()
+    if error is None:
+        app.state.db = opening.result()
+    elif isinstance(error, Exception):
+        logger.error(
+            "The database connection was retired after a failed rollback and could not be replaced: {exc}; "
+            "database access fails until Triggarr is restarted",
+            exc=_sanitize_exc(error),
+        )
+    else:
+        raise error
+    return cancelled
+
+
 @router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
 async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
@@ -1049,7 +1170,7 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
     cannot resurrect it from a stale snapshot. Builds the post-removal
     settings, writes it to disk, and only after the write succeeds swaps
     live settings in and cleans up the scheduler job, client connection,
-    state entry and tag cache.
+    state entry and tag cache, then closes out the instance's pending searches.
     """
     if app_name not in APP_TYPES:
         return HTMLResponse("Invalid app type", status_code=400)
@@ -1072,6 +1193,10 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
                 # CSP nonce, SEC-01). Nothing is echoed back.
                 return HTMLResponse("", headers={"HX-Redirect": str(request.url_for("settings_page"))})
             return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
+
+        # Read from server-side settings before the instance is dropped; never
+        # taken from the request.
+        removed_stable_id = instances[instance_name].id
 
         # Build the post-removal settings without touching live state yet.
         # No re-validation via SettingsModel(**config_dict) is needed here
@@ -1228,6 +1353,56 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         # RES-03 (Pitfall 5): clear the tag cache entry for the removed instance.
         request.app.state.tag_cache.pop((app_name, instance_name), None)
 
+        # Give the removed instance's pending searches their final outcome.
+        # This runs only after the settings write succeeded, makes no call to
+        # the server being removed and no final grab check, and is the last
+        # step inside the lock: the synchronous tidy-up above can never be
+        # skipped by a cancellation, and no tracking or search cycle (both
+        # hold search_lock) can run between the removal and this close-out.
+        # The database function finishes and verifies its rollback before it
+        # lets a failure or cancellation through, so the lock is still held
+        # until the connection is outside any transaction, or retired and
+        # replaced below. A close-out that failed or was interrupted is
+        # repaired by the startup check. A scheduled job or manual search that
+        # was already waiting on search_lock for this instance re-checks, once
+        # it holds the lock, that the instance is still configured and enabled
+        # with the same stable ID and the same client, and does nothing
+        # otherwise (_revalidate_queued_instance).
+        if not removed_stable_id:
+            logger.warning(
+                "Removed {app}/{inst} but it has no stable ID; its pending searches were not closed out",
+                app=app_name,
+                inst=instance_name,
+            )
+        else:
+            try:
+                await close_out_removed_instance_searches(
+                    request.app.state.db,
+                    app=app_name.title(),
+                    instance_stable_id=removed_stable_id,
+                    instance_id=instance_name,
+                )
+            except asyncio.CancelledError as exc:
+                if cancelled is None:
+                    cancelled = exc
+            except Exception as exc:  # error boundary for post-commit cleanup (D-15, D-16)
+                # Only the exception type is logged: its text can hold a URL
+                # with credentials or the removed instance's API key, which the
+                # log sink no longer knows.
+                logger.error(
+                    "Removed {app}/{inst} but closing out its pending searches failed: {exc}",
+                    app=app_name,
+                    inst=instance_name,
+                    exc=_sanitize_exc(exc),
+                )
+            # A close-out whose rollback could not be verified leaves the
+            # connection retired; replace it before the lock is released so
+            # nothing waiting on the lock runs on it. In the normal case this
+            # is a synchronous check.
+            replace_cancel = await _replace_retired_db(request.app)
+            if cancelled is None:
+                cancelled = replace_cancel
+
     # Close stale client outside the lock (TCP teardown doesn't need lock
     # protection). Its failure is logged, not raised: a close failure must not
     # stop the user from seeing the normal success response (D-15, D-16).
@@ -1284,6 +1459,24 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
         return HTMLResponse("Rate limited -- try again shortly", status_code=429)
 
     async with request.app.state.search_lock:
+        # The client and configuration above were read before waiting for the
+        # lock. The instance can be removed, or removed and created again
+        # under the same name, while this request waits. Searching then would
+        # go through the removed instance's client and record pending searches
+        # under its stable ID, so selecting rows by stable ID alone does not
+        # stop it. Checked before the rate limiter is stamped.
+        live_config = _revalidate_queued_instance(
+            request.app, app_name, instance_name, expected_stable_id=instance_config.id, expected_client=client
+        )
+        if live_config is None:
+            logger.info(
+                "{name}/{inst}: Manual search skipped -- the instance was removed or changed while the request waited",
+                name=app_name.title(),
+                inst=instance_name,
+            )
+            return HTMLResponse("Instance not enabled", status_code=400)
+        instance_config = live_config
+
         # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
         now = time.monotonic()
         last = request.app.state.last_search_time.get(rate_key, 0.0)

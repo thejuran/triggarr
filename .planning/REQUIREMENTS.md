@@ -45,10 +45,10 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Removed-Instance Searches
 
-- [ ] **RMINST-01**: When a Sonarr instance is removed, its still-pending searches get the final outcome "Instance removed" (owner decision 2026-11-15); they are kept in History, and are distinct from the existing "Legacy" label.
+- [ ] **RMINST-01**: When a Sonarr, Radarr or Lidarr instance is removed, its still-pending searches get the final outcome "Instance removed" (owner decisions 2026-11-15 and 2026-11-18); they stay visible in History like any other finished search, and are distinct from the existing "Legacy" label.
 - [ ] **RMINST-02**: "Instance removed" searches no longer count toward the pending-search limit and are never checked or credited again.
-- [ ] **RMINST-03**: A new instance added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
-- [ ] **RMINST-04**: Pending searches already orphaned by a removal before this release are brought to the same "Instance removed" outcome at upgrade or startup.
+- [ ] **RMINST-03**: A new instance of any app (Sonarr, Radarr or Lidarr) added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
+- [ ] **RMINST-04**: Pending searches of any app already orphaned by a removal before this release are brought to the same "Instance removed" outcome at upgrade or startup.
 
 ### Telemetry
 
@@ -71,7 +71,7 @@ Deferred. Tracked but not in the current roadmap.
 
 ### Removed-Instance Searches
 
-- **FUT-15**: Radarr and Lidarr pending searches of a removed instance get the same "Instance removed" lifecycle, if investigation shows they are affected (this milestone covers Sonarr, where the gap was found).
+- **FUT-15**: Folded into this milestone on 2026-11-18 (owner decision, Phase 90): RMINST-01..04 now cover Radarr and Lidarr as well as Sonarr.
 
 ## Out of Scope
 
@@ -124,4 +124,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-11-15*
-*Last updated: 2026-11-15 after v2.14 roadmap creation (Phases 87-92, 100% coverage)*
+*Last updated: 2026-11-18 after the Phase 90 scope decision (RMINST-01..04 widened to Sonarr, Radarr and Lidarr)*

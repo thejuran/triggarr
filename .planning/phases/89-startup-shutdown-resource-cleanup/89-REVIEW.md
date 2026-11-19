@@ -2,7 +2,8 @@
 phase: 89-startup-shutdown-resource-cleanup
 reviewed: 2026-11-18T00:00:00Z
 depth: standard
-iteration: 4
+iteration: 5
+reviewed_head: 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd
 files_reviewed: 2
 files_reviewed_list:
   - tests/test_scheduler.py
@@ -10,78 +11,67 @@ files_reviewed_list:
 findings:
   critical: 0
   warning: 0
-  info: 2
-  total: 2
-status: issues_found
+  info: 0
+  total: 0
+status: clean
 ---
 
-# Phase 89: Code Review Report (round 4)
+# Phase 89: Code Review Report (round 5, PR #64 head)
 
 **Reviewed:** 2026-11-18
+**Reviewed head:** `4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd` (HEAD was not moved; working tree clean)
 **Depth:** standard
 **Files Reviewed:** 2
-**Status:** issues_found (info only; no critical or warning findings)
+**Status:** clean (no new findings; open items are already in the backlog)
 
 ## Summary
 
-This round re-reviews the full phase diff (`git diff b4a25aa1..HEAD -- triggarr/ tests/`) at HEAD 6e4753f1
-(code head 9ec53d89). It focuses on the one code commit since round 3, 9ec53d89. That commit adds a `reason`
-argument to `_observe_abandoned_close` and an `abandon_reason` local in `_safe_close`, so the DEBUG line for an
-abandoned close says "ended after the cap" when the wait timed out and "ended after the caller was cancelled" when
-`_safe_close` itself was cancelled.
+This round reviews the full phase diff, `git diff b4a25aa1..4c9abdae -- triggarr/ tests/` (2 files, +1577/-174),
+at the PR #64 head. `git diff 4a7c7c5f..4c9abdae -- triggarr/ tests/` is empty. The commits since round 4 change
+only `.planning/backlog/MAINTENANCE.md` and the Codex evidence files under `.planning/`. The code under review is
+therefore byte-identical to round 4 (code head `9ec53d89`).
 
-**The commit is correct and causes no regressions:**
+I re-read `triggarr/search/scheduler.py` in full and re-checked the paths most likely to hide a defect:
 
-- **Timeout path:** `asyncio.wait` returns with the task not done. `abandon_reason` keeps its initial
-  "the cap", and the `finally` attaches the callback with that value. The WARNING "did not close within" still
-  fires. The existing test `test_safe_close_observes_late_failure_of_abandoned_close` still asserts the exact
-  "ended after the cap (RuntimeError)" line, and it passes.
-- **Cancellation path:** the `except asyncio.CancelledError` branch sets the reason before the `finally` runs. That
-  ordering is guaranteed because the `except` body runs before `finally`, including when it re-raises. The
-  callback therefore receives "the caller was cancelled". The re-raise, the close order and the redaction
-  (`_sanitize_exc` / type name only, never `str(exc)`) are unchanged.
-- **Binding the reason:** `functools.partial` binds the reason by value at attach time, so a later change to the
-  local cannot affect it. The callback's argument order matches the new signature, and `task` is still the
-  argument the callback receives. `_observe_abandoned_close` has no other callers (checked with grep).
-- **Logging safety:** `reason` comes from one of two fixed strings, never from user data or exception text, so no
-  secret can reach the log through it.
+- **`_safe_close`:** the close task is owned by this helper. `_retrieve_close_result` is attached on every path. The
+  abandon/cancel ordering in the `finally` is correct, the reason is bound by value through `functools.partial`,
+  cancellation is re-raised, and every log line is redacted (`_sanitize_exc` or the type name, never `str(exc)`).
+- **Failed-startup cleanup:** the order is scheduler, then clients in reverse, then the database. A cancellation
+  during cleanup is held until every step has run. `raise cleanup_cancel from startup_exc` applies only when the
+  original was an ordinary `Exception`. Otherwise the bare `raise` re-raises the original unchanged, and the
+  handled exception is correctly restored after the nested handlers inside the awaited helpers.
+- **Shutdown:** the drain releases the lock only when it was acquired. The drain, each client close and the
+  database close each hold a cancellation, which is re-raised after the database close.
+- **Scheduler stop:** `_stop_scheduler_if_running` reads the scheduler's own state, so a `start()` that raised
+  after it set the running state is still stopped.
 
-**Tests and lint:** I re-ran both at 9ec53d89. `tests/test_scheduler.py` passes (88 passed, 1 warning), and
-`ruff check triggarr/ tests/` reports "All checks passed!". These results match the orchestrator's run.
+I found no new bug, security issue or test-reliability defect. The new tests restore `_CLEANUP_STEP_TIMEOUT`
+through patching. They also assert that `_ABANDONED_CLOSE_TASKS` is drained, so no global state leaks between tests.
 
-**Not re-raised:** the backlogged items IN-01..IN-06, SA-01, SA-02 and DR-01 in `.planning/backlog/MAINTENANCE.md`
-are unchanged by this commit. One effect is left as it was: on the cancellation path, the abandoned close is still
-recorded only at DEBUG, with no WARNING. That is part of DR-01's behavior, and the updated docstring now states it
-("a timed-out step was already reported once at WARNING").
+**Tests and lint (re-run at 4c9abdae):**
+- `.venv/bin/python -m pytest tests/test_scheduler.py -q`: **88 passed, 1 warning** in 6.32s. The warning is
+  Starlette's `httpx` TestClient deprecation and is unrelated to this phase.
+- `.venv/bin/ruff check triggarr/ tests/`: **All checks passed!**
+- Convention check (`gsd-tools verify conventions --check`) on both files: **0 findings**.
 
-## Info
+## Already backlogged (not re-raised)
 
-### IN-01: The new "the caller was cancelled" wording has no test
+These items are recorded in `.planning/backlog/MAINTENANCE.md` under the Phase 89 entry. The code is unchanged, so
+each one still applies as described there. None of them counts toward this round's totals.
 
-**File:** `triggarr/search/scheduler.py:541`, `tests/test_scheduler.py:2558-2609`
-**Issue:** No test exercises the branch that 9ec53d89 introduced. The only cancellation test,
-`test_safe_close_retrieves_close_failure_when_caller_is_cancelled` (line 2558), sets `gate` before cancelling. The close has therefore
-already finished, nothing is abandoned, and `_observe_abandoned_close` never runs. Only the "the cap" string is
-asserted (line 2553). If the assignment at line 541 were removed or misplaced, the suite would still pass. This
-is the same untested path DR-01 describes, now carrying a log string that is meant to be distinct. The effect is
-limited to the wording of a DEBUG line.
-**Fix:** Add a test that cancels the helper while `close_fn` is still parked on `gate`. It should assert the DEBUG
-line `"DEBUG | Shutdown: abandoned close of database ended after the caller was cancelled (cancelled)"` and that
-`_ABANDONED_CLOSE_TASKS` is empty afterward. This test can be folded into the DR-01 work, because that fix
-changes this path anyway.
-
-### IN-02: "the cap" is the default reason for any non-timeout exit, not just the timeout
-
-**File:** `triggarr/search/scheduler.py:537-556`
-**Issue:** `abandon_reason` starts as "the cap" before the wait, and only `CancelledError` overrides it. If
-`asyncio.wait` exits with any other `BaseException` (for example `KeyboardInterrupt` or `SystemExit` raised inside
-the loop), the task is abandoned and the DEBUG line says "ended after the cap", although no cap fired. In that case
-the "did not close within" WARNING is skipped, because the exception propagates before it. This is the same kind of
-inaccuracy the commit set out to fix, in a narrower and rarely reached case.
-**Fix:** Assign "the cap" only where a timeout is actually known. For example, initialise
-`abandon_reason = "the caller was interrupted"` and set `abandon_reason = "the cap"` right after a successful
-`asyncio.wait` return. Alternatively, keep the current default and add a comment stating that a non-cancellation
-`BaseException` from the wait is not distinguished.
+| ID | Where | Summary |
+|----|-------|---------|
+| IN-01 | `scheduler.py:532` | Dead `isinstance` guard in `_safe_close`'s synchronous-failure branch |
+| IN-02 | `scheduler.py:528-581` | The "could not close" warning and its redaction are repeated four times |
+| IN-03 | `scheduler.py:517` | The docstring says "never raise", but the helper re-raises cancellation (load-bearing) |
+| IN-04 | `scheduler.py:1018-1023` | The shutdown loop iterates the live `*_clients` dicts across awaits |
+| IN-05 | `scheduler.py:540-551, 640-646` | A close that finished just before a cancellation is counted as interrupted |
+| IN-06 | `tests/test_scheduler.py` (`_observe_lifespan`) | A fresh `CancelledError()` is stored, so `from` chaining and two cancellation points go untested |
+| SA-01 | uvicorn / APScheduler stdlib logging | Tracebacks bypass the redacting sink (predates Phase 89; needs owner ruling) |
+| SA-02 | `scheduler.py:116-121` | A close at the 5 s cap can still delay process exit (accepted under D-10; confirm in Phase 92) |
+| DR-01 | `scheduler.py:552-556` | A cancelled `_safe_close` cancels the in-progress close instead of letting it finish within the cap |
+| R4-IN-01 | `scheduler.py:541` | No test covers the "ended after the caller was cancelled" DEBUG line |
+| R4-IN-02 | `scheduler.py:537` | A non-cancellation `BaseException` from the wait is still logged as "the cap" |
 
 ## Set aside (needs ruling)
 
@@ -90,5 +80,6 @@ None.
 ---
 
 _Reviewed: 2026-11-18_
+_Reviewed head: 4c9abdaed29ddf7c2d5861f7e324947cb78b2ddd_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_

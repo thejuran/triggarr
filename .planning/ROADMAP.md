@@ -238,8 +238,8 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 
 - [x] **Phase 87: Settings & State-File Safety** (merged 2026-11-16, PR #62) - A failed settings write during instance removal never corrupts live state, and a non-object state file recovers instead of crashing
 - [x] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** (merged 2026-11-17, PR #63) - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix
-- [ ] **Phase 89: Startup & Shutdown Resource Cleanup** - A partial startup closes what it opened, and one failed client close never blocks the rest from closing
-- [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name
+- [x] **Phase 89: Startup & Shutdown Resource Cleanup** (merged 2026-11-19 UTC, PR #64) - A partial startup closes what it opened, and one failed client close never blocks the rest from closing
+- [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr, Radarr or Lidarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name (8 plans executed 2026-11-18; reviewed and verified 2026-11-19; human checks and PR review pending)
 - [ ] **Phase 91: Search-Command Delivery Confidence** - A timed-out search command is never blindly resent, and an unconfirmed outcome is tracked honestly instead of silently passing or failing
 - [ ] **Phase 92: Built-Image Recovery Demonstration** - CI proves on the real built image that state-file corruption and repeated failed upgrades both recover correctly
 
@@ -296,15 +296,39 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 - [x] 89-02-PLAN.md — a startup that fails after the database opens closes the database and every client built so far, stops the scheduler only if it was started, logs one summary line and re-raises the original error; the aiosqlite worker thread is proven stopped (LIFE-01, LIFE-03)
 
 ### Phase 90: Removed-Instance Pending-Search Lifecycle
-**Goal**: A removed Sonarr instance's leftover pending searches get a defined, visible end state, and a reused instance name never inherits them.
+**Goal**: A removed instance's leftover pending searches (Sonarr, Radarr or Lidarr) get a defined, visible end state, and a reused instance name never inherits them.
 **Depends on**: Phase 87 (reuses the settings-write-ordering fix in the same instance-removal route)
 **Requirements**: RMINST-01, RMINST-02, RMINST-03, RMINST-04
 **Success Criteria** (what must be TRUE):
-  1. When a Sonarr instance is removed, its still-pending searches get the final outcome "Instance removed," stay visible in History, and read as distinct from "Legacy."
+  1. When a Sonarr, Radarr or Lidarr instance is removed, its still-pending searches get the final outcome "Instance removed," stay visible in History, and read as distinct from "Legacy."
   2. "Instance removed" searches no longer count toward the pending-search limit and are never checked or credited again.
-  3. A new instance added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
+  3. A new instance of any app added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
   4. Pending searches already orphaned by a removal before this release reach the same "Instance removed" outcome at the next upgrade or startup.
-**Plans**: TBD
+**Plans**: 8 plans in 8 waves (one plan per wave, run strictly in order in a single working tree)
+
+**Wave 1**
+- [x] 90-01-PLAN.md — one shared rule for which searches are pending, and "instance_removed" as a finished outcome left out of the pending limit, tracking and grab rate (RMINST-02)
+
+**Wave 2** *(blocked on Wave 1: 90-01)*
+- [x] 90-02-PLAN.md — database close-out of a removed instance's pending searches by its own stable ID, and the orphan check used at startup (also with zero instances configured), neither ever leaving a half-done write behind (RMINST-01, RMINST-04)
+
+**Wave 3** *(blocked on Wave 2: 90-02)*
+- [x] 90-03-PLAN.md — Radarr and Lidarr select pending searches by stable instance ID like Sonarr, so a reused name inherits nothing (RMINST-03, RMINST-02)
+
+**Wave 4** *(blocked on Wave 3: 90-03)*
+- [x] 90-04-PLAN.md — "Instance removed" badge, tooltip and filter option in History and the activity rail, kept apart from Legacy (RMINST-01, RMINST-03)
+
+**Wave 5** *(blocked on Wave 4: 90-04)*
+- [x] 90-05-PLAN.md — removing an instance (Remove action or Save Settings) closes its pending searches after the settings write, without ever failing the removal or leaking a secret into the logs (RMINST-01, RMINST-02)
+
+**Wave 6** *(blocked on Wave 5: 90-05)*
+- [x] 90-06-PLAN.md — every startup closes pending searches no configured instance owns, after the cutover and before the scheduler, sparing disabled and Legacy rows, also when no instance is configured (RMINST-04)
+
+**Wave 7** *(blocked on Wave 6: 90-06)*
+- [x] 90-07-PLAN.md — a scheduled or manual search that was waiting to run when its instance was removed, or replaced under the same name, is turned away (RMINST-01, RMINST-02, RMINST-03)
+
+**Wave 8** *(blocked on Wave 7: 90-07)*
+- [x] 90-08-PLAN.md — end-to-end lifecycle tests for Sonarr, Radarr and Lidarr, same-name stats verification, requirement and roadmap wording for all three apps, backlog records (RMINST-01, RMINST-02, RMINST-03, RMINST-04)
 
 ### Phase 91: Search-Command Delivery Confidence
 **Goal**: A search command is retried only when it's actually safe, and a command whose outcome is unknown is tracked honestly instead of counted as success or failure.
@@ -350,8 +374,8 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 | 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
 | 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Complete (merged PR #63) | 2026-11-17 |
-| 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; local review and verifier (22/22) finished; in review, PR not yet opened | - |
-| 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
+| 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; verifier 22/22; in review, PR #64 open | - |
+| 90. Removed-Instance Pending-Search Lifecycle | 7/8 | In Progress|  |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |
 | 92. Built-Image Recovery Demonstration | TBD | Not started | - |
 
