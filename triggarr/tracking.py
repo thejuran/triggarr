@@ -81,18 +81,16 @@ async def run_tracking_check(
         db: Open aiosqlite connection.
         client: The *arr client for this instance.
         app_name: Application name (e.g. "Radarr", "Sonarr").
-        instance_id: Instance display name. Used for Radarr/Lidarr pending-search
-            selection and for the name stored on a newly-created legacy
-            lifetime_stats row.
+        instance_id: Instance display name. Used for log lines and for the name
+            stored on a lifetime_stats row; never used to select a pending
+            search.
         tracking_window_minutes: Minutes after a search to look for grabs.
-        instance_stable_id: The instance's permanent Triggarr-assigned ID.
-            For Sonarr this is the required key for pending-search selection
-            and grab ownership (a rename or a different server reusing an
-            old name must never misroute or double-credit a search); an
-            empty value refuses to track rather than risk sharing ownership
-            across instances. For Radarr/Lidarr it only keys lifetime stat
-            increments (falling back to the legacy name-keyed row when
-            empty); selection and outcome logic there are unchanged.
+        instance_stable_id: The instance's permanent Triggarr-assigned ID. For all
+            three apps this is the required key for pending-search selection
+            and lifetime credit (a rename or a different server reusing an
+            old name must never misroute or double-credit a search). For
+            Sonarr it also keys grab ownership. An empty value refuses to
+            track and counts the pending entries as errors.
 
     Returns:
         Dict with counts: ``{"grabbed": N, "partial": N, "partial_expired": N,
@@ -120,7 +118,21 @@ async def run_tracking_check(
             counts=counts,
         )
 
-    entries = await get_trackable_entries(db, instance_id=instance_id)
+    if not instance_stable_id:
+        # Never fall back to the display name: a reused name would hand this
+        # instance another server's searches.
+        pending_entries = await get_trackable_entries(db, instance_id=instance_id)
+        pending_count = sum(1 for e in pending_entries if e["app"] == app_name)
+        logger.error(
+            "Tracking[{inst}]: {app} instance has no stable ID yet -- skipping {count} pending entries",
+            inst=instance_id,
+            app=app_name,
+            count=pending_count,
+        )
+        counts["errors"] += pending_count
+        return counts
+
+    entries = await get_trackable_entries(db, instance_stable_id=instance_stable_id)
     if not entries:
         logger.debug("Tracking[{inst}]: no pending entries", inst=instance_id)
         return counts
@@ -131,7 +143,7 @@ async def run_tracking_check(
     groups: dict[int, list[dict]] = {}
     for entry in entries:
         if entry["app"] != app_name:
-            continue  # belt-and-suspenders: instance_id should already scope correctly
+            continue  # belt-and-suspenders: the stable ID should already scope correctly
         groups.setdefault(entry["item_id"], []).append(entry)
 
     for item_id, group_entries in groups.items():
@@ -193,11 +205,9 @@ async def run_tracking_check(
                 app=app_name,
                 queue_type=entry["queue_type"],
                 instance_id=instance_id,
-                # Credit the instance that ran this search, not whichever
-                # server now holds its display name. A row stored without a
-                # stable ID (written before v10 association) falls back to
-                # the current instance's ID, as before Phase 81.
-                instance_stable_id=entry["instance_stable_id"] or instance_stable_id or None,
+                # Every selected row carries this instance's own stable ID, so
+                # credit can only land on the instance that ran the search.
+                instance_stable_id=instance_stable_id,
                 stat_increments=stat_increments,
             )
             counts[outcome] = counts.get(outcome, 0) + 1

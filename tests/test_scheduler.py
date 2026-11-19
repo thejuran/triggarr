@@ -1357,6 +1357,7 @@ async def test_search_job_runs_tracking_after_cycle(tmp_path):
     radarr_client.get_cutoff_unmet = AsyncMock(return_value={"page": 1, "totalRecords": 0, "records": []})
 
     app, db, state_path = await _make_app_with_db(tmp_path, radarr_client=radarr_client)
+    app.state.settings.radarr["Default"].id = "sid-radarr-default"
 
     try:
         # Insert a "searched" entry with timestamp old enough for grab to fall within window
@@ -1364,6 +1365,7 @@ async def test_search_job_runs_tracking_after_cycle(tmp_path):
         await insert_search_entry(
             db, "Radarr", "missing", "Test Movie",
             outcome="searched", item_id=42, missing_count=None,
+            instance_stable_id="sid-radarr-default",
         )
         # Override timestamp to search_time
         await db.execute(
