@@ -38,6 +38,7 @@ from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 from triggarr.search.scheduler import (
     _TAG_CACHE_TTL_SECONDS,
     _evaluate_cycle_outcome,
+    _revalidate_queued_instance,
     _run_one_cycle,
     make_search_job,
 )
@@ -3744,3 +3745,84 @@ async def test_shutdown_cancelled_during_client_close_still_closes_remaining_ste
     assert obs.lines[-1] == "INFO | Search engine stopped"
     assert not any(line.startswith("ERROR | ") for line in obs.lines)
     assert obs.rescue_errors == []
+
+
+# ---------------------------------------------------------------------------
+# Queued work revalidation (Phase 90)
+# ---------------------------------------------------------------------------
+
+
+def _revalidation_app(*, stable_id: str = "sid-a", enabled: bool = True):
+    """Minimal app with one radarr instance "Main" and its client; returns (app, client)."""
+    app = FastAPI()
+    client = MagicMock()
+    app.state.radarr_clients = {"Main": client}
+    app.state.settings = Settings(
+        general=GeneralConfig(),
+        radarr={
+            "Main": InstanceConfig(
+                url="http://radarr:7878", api_key="k", enabled=enabled, id=stable_id, missing_tag="wanted"
+            )
+        },
+    )
+    return app, client
+
+
+def test_revalidate_queued_instance_accepts_unchanged_instance_and_returns_live_config():
+    app, client = _revalidation_app()
+    live = app.state.settings.radarr["Main"]
+    result = _revalidate_queued_instance(app, "radarr", "Main", expected_stable_id="sid-a", expected_client=client)
+    assert result is live
+
+    # The live settings were replaced by a copy where only a non-identity field changed.
+    app.state.settings = app.state.settings.model_copy(
+        update={"radarr": {"Main": live.model_copy(update={"missing_tag": "changed"})}}
+    )
+    replaced = app.state.settings.radarr["Main"]
+    result = _revalidate_queued_instance(app, "radarr", "Main", expected_stable_id="sid-a", expected_client=client)
+    assert result is replaced
+    assert result.missing_tag == "changed"
+
+
+def _stale_removed(app, _client):
+    app.state.settings = app.state.settings.model_copy(update={"radarr": {}})
+
+
+def _stale_disabled(app, _client):
+    app.state.settings.radarr["Main"].enabled = False
+
+
+def _stale_new_stable_id(app, _client):
+    app.state.settings.radarr["Main"].id = "sid-new"
+
+
+def _stale_replaced_client(app, _client):
+    app.state.radarr_clients["Main"] = MagicMock()
+
+
+def _stale_new_id_and_client(app, _client):
+    app.state.settings.radarr["Main"].id = "sid-new"
+    app.state.radarr_clients["Main"] = MagicMock()
+
+
+def _stale_client_missing(app, _client):
+    app.state.radarr_clients.pop("Main")
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(_stale_removed, id="removed"),
+        pytest.param(_stale_disabled, id="disabled"),
+        pytest.param(_stale_new_stable_id, id="same_name_new_stable_id"),
+        pytest.param(_stale_replaced_client, id="same_stable_id_replaced_client"),
+        pytest.param(_stale_new_id_and_client, id="same_name_new_id_and_new_client"),
+        pytest.param(_stale_client_missing, id="client_missing"),
+    ],
+)
+def test_revalidate_queued_instance_rejects_stale_work(mutate):
+    app, client = _revalidation_app()
+    mutate(app, client)
+    assert (
+        _revalidate_queued_instance(app, "radarr", "Main", expected_stable_id="sid-a", expected_client=client) is None
+    )

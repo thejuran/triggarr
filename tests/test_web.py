@@ -4780,3 +4780,297 @@ def test_search_now_reuses_warm_tag_cache(multi_instance_app):
 
     assert response.status_code == 200
     radarr_client.get_tags.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Work queued behind a removal (Phase 90)
+# ---------------------------------------------------------------------------
+#
+# A scheduled job or manual search that already waits on search_lock when its
+# instance is removed must do nothing once it gets the lock. The instance under
+# test is radarr "4K", enabled with the stable ID "sid-4k", so that both
+# entry points pass their pre-lock checks and park on the lock.
+
+_Q_BOUND = 5
+
+
+class _WaiterAnnouncingLock(asyncio.Lock):
+    """asyncio.Lock that sets ``waiter_arrived`` when acquired while already held."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.waiter_arrived = asyncio.Event()
+
+    async def acquire(self):
+        if self.locked():
+            self.waiter_arrived.set()
+        return await super().acquire()
+
+
+def _enable_4k_for_queue_tests(app):
+    """Give radarr 4K (enabled) the ID sid-4k; return the client queued work captures."""
+    settings = app.state.settings
+    settings.radarr["Default"].id = "sid-default"
+    settings.radarr["4K"] = settings.radarr["4K"].model_copy(update={"enabled": True, "id": "sid-4k"})
+    client_4k = app.state.radarr_clients["4K"]
+    assert app.state.settings.get_enabled_instances("radarr")["4K"].id == "sid-4k"
+    assert app.state.radarr_clients["4K"] is client_4k
+    client_4k.get_grab_history = AsyncMock(return_value=[])
+    return client_4k
+
+
+def _queue_cycle_stub(app):
+    """Recording stand-in for run_radarr_cycle: records one pending search under the ID it was given."""
+    calls: list[tuple] = []
+
+    async def stub(client, state, instance_name, instance_config, settings, db, *, get_tags_fn):
+        calls.append((client, instance_name, instance_config))
+        await insert_search_entry(
+            db, "Radarr", "missing", "Queued Movie", item_id=9001,
+            instance_id=instance_name, instance_stable_id=instance_config.id,
+        )
+        return state
+
+    return stub, calls
+
+
+def _tracking_spy():
+    """Spy around the real run_tracking_check."""
+    from triggarr.tracking import run_tracking_check as real_tracking
+
+    calls: list[tuple] = []
+
+    async def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return await real_tracking(*args, **kwargs)
+
+    return spy, calls
+
+
+async def _rows_for(db, stable_id: str) -> list[tuple]:
+    async with db.execute(
+        "SELECT id, outcome FROM search_history WHERE instance_stable_id = ? ORDER BY id", (stable_id,)
+    ) as cur:
+        return [tuple(r) for r in await cur.fetchall()]
+
+
+async def _credit_rows_for(db, stable_id: str) -> list[tuple]:
+    async with db.execute("SELECT * FROM lifetime_stats WHERE instance_stable_id = ?", (stable_id,)) as cur:
+        return [tuple(r) for r in await cur.fetchall()]
+
+
+async def _run_queued_race(app, holder, queued, *, prove_holder):
+    """Run ``holder`` (a request that takes search_lock and holds it during its settings write) and
+    ``queued`` (work that parks on search_lock meanwhile) and return ``(holder_result, queued_result)``.
+
+    Sequence: holder starts; its settings write begins; queued starts; queued is parked on the lock;
+    the write is released (ending in the real writer); holder finishes; ``prove_holder`` checks the
+    holder did what the test assumes; queued finishes. Every wait is bounded and the gate is always
+    released, so a failure here fails the test instead of hanging.
+    """
+    from triggarr.config import _atomic_toml_write as real_atomic_write
+
+    loop = asyncio.get_running_loop()
+    write_started = threading.Event()
+    release_write = threading.Event()
+    writes = 0
+
+    def gated_write(path, data, **kwargs):
+        nonlocal writes
+        writes += 1
+        if writes == 1:
+            write_started.set()
+            if not release_write.wait(10):
+                raise RuntimeError("test gate timed out")
+        return real_atomic_write(path, data, **kwargs)
+
+    lock = _WaiterAnnouncingLock()
+    app.state.search_lock = lock
+    tasks: list[asyncio.Task] = []
+    try:
+        with patch("triggarr.web.routes._atomic_toml_write", side_effect=gated_write):
+            async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                holder_task = asyncio.create_task(holder(ac))
+                tasks.append(holder_task)
+                started = await loop.run_in_executor(None, write_started.wait, _Q_BOUND)
+                assert started, "barrier 'write started' did not fire: the holder never reached its settings write"
+                queued_task = asyncio.create_task(queued(ac))
+                tasks.append(queued_task)
+                await asyncio.wait_for(lock.waiter_arrived.wait(), timeout=_Q_BOUND)
+                assert lock.waiter_arrived.is_set(), "barrier 'waiter arrived' did not fire"
+                release_write.set()
+                holder_result = await asyncio.wait_for(holder_task, timeout=_Q_BOUND)
+                await prove_holder(holder_result)
+                queued_result = await asyncio.wait_for(queued_task, timeout=_Q_BOUND)
+                return holder_result, queued_result
+    finally:
+        release_write.set()
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _remove_action_holder(ac):
+    return ac.post("/api/instance/remove/radarr/4K")
+
+
+def _omission_form() -> dict:
+    return {k: v for k, v in _multi_form_data().items() if not k.startswith("radarr__4K__")}
+
+
+def _save_omission_holder(ac):
+    return ac.post("/settings", data=_omission_form(), follow_redirects=False)
+
+
+def _save_unchanged_holder(ac):
+    return ac.post("/settings", data=_multi_form_data(page_size="25"), follow_redirects=False)
+
+
+_REMOVAL_HOLDERS = [
+    pytest.param(_remove_action_holder, 303, id="remove_action"),
+    pytest.param(_save_omission_holder, 303, id="save_settings_omission"),
+]
+
+
+def _prove_removal(app, client_4k, pending_ids, expected_status):
+    async def prove(response):
+        assert response.status_code == expected_status, f"the removal request did not succeed: {response.status_code}"
+        assert "4K" not in app.state.settings.radarr, "4K must be removed from the live settings"
+        assert "4K" not in app.state.radarr_clients, "4K must be removed from the client registry"
+        for outcome, _detail, _resolved in await _row_states(app.state.db, pending_ids):
+            assert outcome == "instance_removed"
+
+    return prove
+
+
+def _prove_unchanged(app, client_4k):
+    async def prove(response):
+        assert response.status_code == 303, f"the unchanged Save Settings did not succeed: {response.status_code}"
+        assert app.state.settings.get_enabled_instances("radarr")["4K"].id == "sid-4k"
+        assert app.state.radarr_clients["4K"] is client_4k
+        assert app.state.config_path.exists()
+
+    return prove
+
+
+def _assert_client_untouched(client) -> None:
+    assert [c[0] for c in client.method_calls if c[0] != "close"] == []
+
+
+async def _assert_nothing_recorded(app, rows_before, *, cycle_calls, tracking_calls, client) -> None:
+    db = app.state.db
+    assert cycle_calls == [], "the stale work must not run a search cycle"
+    assert tracking_calls == [], "the stale work must not run a tracking check"
+    _assert_client_untouched(client)
+    rows = await _rows_for(db, "sid-4k")
+    assert [r for r in rows if r[1] in ("searched", "partial")] == []
+    assert rows == rows_before, "no row may be inserted for the removed instance"
+    assert await _credit_rows_for(db, "sid-4k") == []
+
+
+@pytest.mark.parametrize(("holder", "status"), _REMOVAL_HOLDERS)
+async def test_queued_scheduled_job_does_nothing_after_instance_removed(multi_instance_app, holder, status):
+    from triggarr.search.scheduler import make_search_job
+
+    app = multi_instance_app
+    client_4k = _enable_4k_for_queue_tests(app)
+    pending = await _seed_rows(app.state.db, "Radarr", "sid-4k", name="4K")
+    rows_before = await _rows_for(app.state.db, "sid-4k")
+    stub, cycle_calls = _queue_cycle_stub(app)
+    spy, tracking_calls = _tracking_spy()
+
+    with (
+        patch("triggarr.search.scheduler.run_radarr_cycle", new=stub),
+        patch("triggarr.search.scheduler.run_tracking_check", new=spy),
+    ):
+        job = make_search_job(app, "radarr", "4K", app.state.state_path)
+
+        async def queued(_ac):
+            return await job()
+
+        await _run_queued_race(app, holder, queued, prove_holder=_prove_removal(app, client_4k, pending, status))
+
+    rows_after_removal = [(i, "instance_removed") for i, _ in rows_before]
+    assert await _rows_for(app.state.db, "sid-4k") == rows_after_removal
+    await _assert_nothing_recorded(
+        app, await _rows_for(app.state.db, "sid-4k"), cycle_calls=cycle_calls, tracking_calls=tracking_calls,
+        client=client_4k,
+    )
+    assert app.state.search_lock_holder is None
+    assert not app.state.search_lock.locked()
+
+
+async def test_queued_scheduled_job_is_not_revived_by_same_name_recreation(multi_instance_app):
+    from triggarr.search.scheduler import make_search_job
+
+    app = multi_instance_app
+    client_4k = _enable_4k_for_queue_tests(app)
+    pending = await _seed_rows(app.state.db, "Radarr", "sid-4k", name="4K")
+    stub, cycle_calls = _queue_cycle_stub(app)
+    spy, tracking_calls = _tracking_spy()
+    new_client = MagicMock()
+    new_client.close = AsyncMock()
+    new_client.get_grab_history = AsyncMock(return_value=[])
+
+    from triggarr.web.routes import close_out_removed_instance_searches as real_close_out
+
+    async def close_out_then_recreate(*args, **kwargs):
+        result = await real_close_out(*args, **kwargs)
+        app.state.settings.radarr["4K"] = InstanceConfig(
+            url="http://radarr4k:7878", api_key="radarr-4k-key", enabled=True, id="sid-4k-new",
+            missing_tag="wanted-4k",
+        )
+        app.state.radarr_clients["4K"] = new_client
+        return result
+
+    with (
+        patch("triggarr.search.scheduler.run_radarr_cycle", new=stub),
+        patch("triggarr.search.scheduler.run_tracking_check", new=spy),
+        patch("triggarr.web.routes.close_out_removed_instance_searches", new=close_out_then_recreate),
+    ):
+        job = make_search_job(app, "radarr", "4K", app.state.state_path)
+
+        async def queued(_ac):
+            return await job()
+
+        async def prove(response):
+            assert response.status_code == 303
+            assert app.state.settings.radarr["4K"].id == "sid-4k-new"
+            for outcome, _d, _r in await _row_states(app.state.db, pending):
+                assert outcome == "instance_removed"
+
+        await _run_queued_race(app, _remove_action_holder, queued, prove_holder=prove)
+
+    assert cycle_calls == []
+    assert tracking_calls == []
+    _assert_client_untouched(client_4k)
+    _assert_client_untouched(new_client)
+    assert await _rows_for(app.state.db, "sid-4k-new") == []
+    assert [r for r in await _rows_for(app.state.db, "sid-4k") if r[1] in ("searched", "partial")] == []
+
+
+async def test_queued_scheduled_job_still_runs_for_unchanged_instance(multi_instance_app):
+    from triggarr.search.scheduler import make_search_job
+
+    app = multi_instance_app
+    client_4k = _enable_4k_for_queue_tests(app)
+    stub, cycle_calls = _queue_cycle_stub(app)
+    spy, tracking_calls = _tracking_spy()
+
+    with (
+        patch("triggarr.search.scheduler.run_radarr_cycle", new=stub),
+        patch("triggarr.search.scheduler.run_tracking_check", new=spy),
+    ):
+        job = make_search_job(app, "radarr", "4K", app.state.state_path)
+
+        async def queued(_ac):
+            return await job()
+
+        await _run_queued_race(app, _save_unchanged_holder, queued, prove_holder=_prove_unchanged(app, client_4k))
+
+    assert len(cycle_calls) == 1
+    assert cycle_calls[0][0] is client_4k
+    assert cycle_calls[0][2].id == "sid-4k"
+    assert len(tracking_calls) == 1
+    assert tracking_calls[0][1]["instance_stable_id"] == "sid-4k"
