@@ -325,7 +325,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 - [x] 90-06-PLAN.md — every startup closes pending searches no configured instance owns, after the cutover and before the scheduler, sparing disabled and Legacy rows, also when no instance is configured (RMINST-04)
 
 **Wave 7** *(blocked on Wave 6: 90-06)*
-- [ ] 90-07-PLAN.md — a scheduled or manual search that was waiting to run when its instance was removed, or replaced under the same name, is turned away (RMINST-01, RMINST-02, RMINST-03)
+- [x] 90-07-PLAN.md — a scheduled or manual search that was waiting to run when its instance was removed, or replaced under the same name, is turned away (RMINST-01, RMINST-02, RMINST-03)
 
 **Wave 8** *(blocked on Wave 7: 90-07)*
 - [ ] 90-08-PLAN.md — end-to-end lifecycle tests for Sonarr, Radarr and Lidarr, same-name stats verification, requirement and roadmap wording for all three apps, backlog records (RMINST-01, RMINST-02, RMINST-03, RMINST-04)
@@ -375,7 +375,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 | 87. Settings & State-File Safety | 3/3 | Complete (merged PR #62) | 2026-11-16 |
 | 88. Bounded Upgrade Backups & Telemetry Regression | 2/2 | Complete (merged PR #63) | 2026-11-17 |
 | 89. Startup & Shutdown Resource Cleanup | 2/2 | Executed; verifier 22/22; in review, PR #64 open | - |
-| 90. Removed-Instance Pending-Search Lifecycle | 6/8 | In Progress|  |
+| 90. Removed-Instance Pending-Search Lifecycle | 7/8 | In Progress|  |
 | 91. Search-Command Delivery Confidence | TBD | Not started | - |
 | 92. Built-Image Recovery Demonstration | TBD | Not started | - |
 
