@@ -1222,7 +1222,9 @@ async def get_trackable_entries(
             "season_number": row["season_number"],
             "missing_count": row["missing_count"],
             "timestamp": row["timestamp"],
-            "outcome": row["outcome"],
+            # A NULL outcome is pending under _PENDING_SQL's COALESCE; hand it to
+            # tracking as 'searched' so partial progress and grab ownership apply.
+            "outcome": row["outcome"] or "searched",
             "instance_id": row["instance_id"] or "Default",
             "instance_stable_id": row["instance_stable_id"],
         }

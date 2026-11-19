@@ -3214,6 +3214,8 @@ async def test_pending_predicate_null_outcome_is_trackable(tmp_path):
     await _null_outcomes(db, await _ids(db))
     entries = await get_trackable_entries(db, instance_stable_id="sid-a")
     assert [e["item_id"] for e in entries] == [7]
+    # Tracking keys partial progress and grab ownership on 'searched', so NULL is normalized.
+    assert [e["outcome"] for e in entries] == ["searched"]
     await db.close()
 
 
