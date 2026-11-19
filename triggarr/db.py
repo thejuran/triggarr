@@ -8,11 +8,13 @@ logged, version-tracked schema evolution with backup-before-migrate.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import math
 import re
 import shutil
 import sqlite3
+import weakref
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -789,6 +791,8 @@ async def init_db(
     # Set row_factory globally so all queries return Row objects (dict-like access)
     # instead of plain tuples. This eliminates per-function row_factory mutation.
     db.row_factory = aiosqlite.Row
+    # Lets a retired connection be replaced on the same file (replace_retired_connection).
+    _CONNECTION_PATHS[db] = db_path
 
     await db.execute("""
         CREATE TABLE IF NOT EXISTS search_history (
@@ -819,9 +823,17 @@ async def init_db(
 # including OUTCOME_INSTANCE_REMOVED, is finished.
 PENDING_OUTCOMES: tuple[str, ...] = ("searched", "partial")
 OUTCOME_INSTANCE_REMOVED = "instance_removed"
+INSTANCE_REMOVED_DETAIL = "instance removed"
 _PENDING_OUTCOMES_SQL = ", ".join(f"'{o}'" for o in PENDING_OUTCOMES)
 _PENDING_SQL = f"COALESCE(outcome, 'searched') IN ({_PENDING_OUTCOMES_SQL})"
 _NOT_PENDING_SQL = f"COALESCE(outcome, 'searched') NOT IN ({_PENDING_OUTCOMES_SQL})"
+
+# Connection bookkeeping for the close-out functions: connections whose rollback
+# could not be verified (closed, never to be used again) and the database file
+# each connection was initialised on (so a retired one can be replaced).
+_RETIRED_CONNECTIONS: weakref.WeakSet[aiosqlite.Connection] = weakref.WeakSet()
+_CONNECTION_PATHS: weakref.WeakKeyDictionary[aiosqlite.Connection, Path] = weakref.WeakKeyDictionary()
+_ROLLBACK_ATTEMPTS = 3
 
 # A pre-cutover pending Sonarr row is identified at query time by comparing
 # its id to the cutover's recorded legacy_max_history_id, never by writing a
@@ -1386,6 +1398,197 @@ async def update_outcome_and_stats(
         stats=stat_increments or {},
         owned=len(owned_grabs),
     )
+
+
+def is_connection_retired(db: aiosqlite.Connection) -> bool:
+    """Return True when ``db`` was retired by a close-out whose rollback could not be verified.
+
+    A retired connection is closed and can never commit anything again. Callers
+    check this after any failure or cancellation of a close-out and swap in
+    ``replace_retired_connection(db)`` before using the database again.
+    """
+    return db in _RETIRED_CONNECTIONS
+
+
+async def _run_to_completion(
+    make: Callable[[], Awaitable[Any]],
+) -> tuple[BaseException | None, asyncio.CancelledError | None]:
+    """Run ``make()`` as its own task and wait for it to finish, whatever happens to the caller.
+
+    The caller may be cancelled repeatedly while waiting (cancel scopes
+    re-deliver a cancellation at every await); the wait continues and the first
+    such cancellation is returned for the caller to re-raise. Returns the
+    task's own outcome (None on success, its exception, or a ``CancelledError``
+    when the task itself ended cancelled, which is a failed attempt and not a
+    cancellation of the caller) and the caller's cancellation or None.
+    """
+    task = asyncio.ensure_future(make())
+    caller_cancelled: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if not task.cancelled() and caller_cancelled is None:
+                caller_cancelled = exc
+        except Exception:
+            pass  # the task's own error: read from the task below
+    if task.cancelled():
+        return asyncio.CancelledError(), caller_cancelled
+    return task.exception(), caller_cancelled
+
+
+async def _retire_connection(
+    db: aiosqlite.Connection, *, close_errors: list[str] | None = None,
+) -> asyncio.CancelledError | None:
+    """Mark ``db`` retired, then close it. Returns a caller cancellation received meanwhile.
+
+    Closing is the isolation: SQLite discards the uncommitted transaction of a
+    closed connection, and aiosqlite drops its handle in a ``finally`` even when
+    the close itself raises, so every later call on this object raises instead
+    of committing. The mark is set first (so it holds even if the close is
+    interrupted) and is what callers act on. The type name of a close error is
+    appended to ``close_errors`` when one is given.
+    """
+    _RETIRED_CONNECTIONS.add(db)
+    error, caller_cancelled = await _run_to_completion(db.close)
+    if error is not None and close_errors is not None:
+        close_errors.append(type(error).__name__)
+    return caller_cancelled
+
+
+async def _rollback_through_cancellation(
+    db: aiosqlite.Connection, *, context: str, original: BaseException,
+) -> asyncio.CancelledError | None:
+    """Finish the failed or cancelled transaction on ``db``; the connection ends clean or retired.
+
+    Cancelling an awaited aiosqlite call does not cancel the statement already
+    queued on the connection's worker thread, so a write can still be applied
+    and stay in an open transaction until an unrelated commit flushes it. A
+    rollback queued behind it ends the transaction, but only a rollback call
+    that completed proves that: it is run to completion, verified by reading
+    ``db.in_transaction`` straight after it, and retried (up to
+    ``_ROLLBACK_ATTEMPTS`` attempts). When no attempt is verified the connection
+    is retired (marked and closed) instead of being returned in an unknown
+    state. The post-condition is therefore "clean or retired, never unknown".
+    ``in_transaction`` is never read after a failed or cancelled attempt: that
+    statement may still be queued.
+
+    Assumes nothing else writes on this connection while a close-out runs (the
+    removal routes hold ``search_lock``; the startup sweep runs before anything
+    else starts), so a transaction still open after a completed rollback is
+    treated as not clean rather than as someone else's work.
+
+    Messages carry exception type names only, never exception text.
+    Returns the first cancellation of the caller received along the way.
+    """
+    caller_cancelled: asyncio.CancelledError | None = None
+    failures: list[str] = []
+    original_type = type(original).__name__
+    for attempt in range(1, _ROLLBACK_ATTEMPTS + 1):
+        error, cancelled = await _run_to_completion(db.rollback)
+        if cancelled is not None and caller_cancelled is None:
+            caller_cancelled = cancelled
+        if error is not None:
+            failures.append(type(error).__name__)
+            continue
+        try:
+            still_open = db.in_transaction
+        except ValueError:  # closed connection: nothing verified
+            still_open = True
+        if not still_open:
+            if attempt > 1:
+                logger.warning(
+                    "{context}: rollback succeeded on attempt {n} after {types}; original error: {original}",
+                    context=context, n=attempt, types=", ".join(failures), original=original_type,
+                )
+            return caller_cancelled
+        failures.append("StillInTransaction")
+
+    close_errors: list[str] = []
+    retire_cancelled = await _retire_connection(db, close_errors=close_errors)
+    if retire_cancelled is not None and caller_cancelled is None:
+        caller_cancelled = retire_cancelled
+    close_note = f"; close failed: {', '.join(close_errors)}" if close_errors else ""
+    logger.error(
+        "{context}: rollback could not be verified after {n} attempts ({types}); the database connection "
+        "was retired and must be replaced; original error: {original}{close_note}",
+        context=context, n=_ROLLBACK_ATTEMPTS, types=", ".join(failures), original=original_type,
+        close_note=close_note,
+    )
+    return caller_cancelled
+
+
+async def replace_retired_connection(db: aiosqlite.Connection) -> aiosqlite.Connection:
+    """Return ``db`` itself when it is healthy, or a fresh connection to the same file when retired.
+
+    The replacement has the same PRAGMAs as the application's connection and
+    ``row_factory = aiosqlite.Row``. It does not run ``init_db`` (the schema
+    exists; running migrations and their backup again is neither needed nor
+    wanted). The caller owns the returned connection and must publish it.
+
+    Raises ``aiosqlite.Error`` when no database path was recorded for ``db``;
+    an open or PRAGMA failure propagates after the half-opened connection is
+    closed.
+    """
+    if db not in _RETIRED_CONNECTIONS:
+        return db
+    path = _CONNECTION_PATHS.get(db)
+    if path is None:
+        raise aiosqlite.Error("No database path was recorded for the retired connection")
+    new_db = await aiosqlite.connect(path)
+    try:
+        await new_db.execute("PRAGMA journal_mode=WAL")
+        await new_db.execute("PRAGMA synchronous=NORMAL")
+        new_db.row_factory = aiosqlite.Row
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await new_db.close()
+        raise
+    _CONNECTION_PATHS[new_db] = path
+    logger.warning("Database connection replaced after a rollback that could not be verified")
+    return new_db
+
+
+async def close_out_removed_instance_searches(
+    db: aiosqlite.Connection, *, app: str, instance_stable_id: str, instance_id: str,
+) -> int:
+    """Give every pending search of a removed instance the final ``instance_removed`` outcome.
+
+    Keyed on ``app`` and the row's own stable ID only, never on the display
+    name. ``instance_id`` is the display name and is used for the log line.
+    No network call and no final grab check. Legacy rows and finished rows are
+    never rewritten; lifetime stats and grab ownership are left as they are.
+
+    On return the write is fully committed. On raise (including cancellation)
+    the write was rolled back and that was verified, or, when the rollback could
+    not be verified, the connection was retired (closed;
+    ``is_connection_retired(db)`` is True) so the abandoned changes can never be
+    committed; the caller must then swap in ``replace_retired_connection(db)``
+    before using the database again. Either way a caller holding a lock across
+    this call holds it until the database cleanup has finished.
+
+    Returns the number of rows closed.
+    """
+    if not instance_stable_id:
+        return 0  # never close by display name: it can be shared or reused
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    try:
+        cursor = await db.execute(
+            "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? "
+            f"WHERE app = ? AND instance_stable_id = ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",  # noqa: S608
+            (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, now, app, instance_stable_id),
+        )
+        closed = cursor.rowcount
+        await db.commit()
+    except BaseException as exc:  # includes cancellation: see _rollback_through_cancellation
+        cancelled = await _rollback_through_cancellation(
+            db, context="close_out_removed_instance_searches", original=exc,
+        )
+        if cancelled is not None and not isinstance(exc, asyncio.CancelledError):
+            raise cancelled from exc
+        raise
+    logger.info("Closed out {n} pending search(es) of removed {app}/{inst}", n=closed, app=app, inst=instance_id)
+    return closed
 
 
 async def get_owned_grabs(

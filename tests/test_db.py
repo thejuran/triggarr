@@ -3458,7 +3458,7 @@ async def _block_worker(db):
         return 1
 
     await db.create_function("triggarr_block", 0, block)
-    task = asyncio.ensure_future(db.execute("SELECT triggarr_block()"))
+    task = asyncio.ensure_future(db.execute("SELECT 1 WHERE triggarr_block() = 99"))
     await asyncio.get_running_loop().run_in_executor(None, started.wait, 10)
     return release, task
 
@@ -3591,8 +3591,8 @@ async def test_close_out_instance_removed_leaves_lifetime_stats_and_ownership(tm
     )
     grabbed = await _ids(db)
     await update_outcome_and_stats(
-        db, history_id=grabbed[0], outcome="grabbed", detail="x", app="Radarr", instance_id="Main",
-        stat_increments={"grabs": 1},
+        db, grabbed[0], "grabbed", "x", app="Radarr", queue_type="missing", instance_id="Main",
+        instance_stable_id="sid-old", stat_increments={"movies_found": 1},
     )
     await _seed_pending(db)
 
