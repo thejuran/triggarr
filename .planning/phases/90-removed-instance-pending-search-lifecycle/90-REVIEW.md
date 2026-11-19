@@ -140,3 +140,10 @@ Other review sources at this checkpoint:
 
 - **Codex (contract pass, head `669280d4`, attempt 1, complete):** F001 (a 90-06 plan acceptance check counted the comment it requires) — the plan check now excludes comment lines.
 - **Vibe-check (required at high risk, deep review passes 1-3 on `669280d4` → `1a9039bd`):** NULL-outcome normalization fixed in `1a9039bd` and confirmed by an independent re-check; wait-loop duplication deferred; config-id item dismissed (above).
+
+### Fix rounds after the first checkpoint (2026-11-19)
+
+- **Round 1 head `4b1f9f1b`:** BM review after fixes (`90-REVIEW-FIXES.md`): 0 blocker, 0 warning, 2 info. Codex contract pass attempt 1 complete: F001 low (90-07 plan acceptance check). Vibe-check pass 4: one warning — the close-out appended to the engine's default "search triggered" detail — fixed in `22b99325` (owner took the bottom line, with the stopping rule below).
+- **Stopping rule (owner, 2026-11-19, stated on the pass-4 card):** after the round-2 fix, one final round that blocks only on critical/warning findings; anything smaller goes to the backlog.
+- **Round 2 head `22b99325` (final):** BM review after fixes (`90-REVIEW-FIXES-2.md`): 0 blocker, 0 warning, 1 info. Codex contract pass attempt 1 complete: F001 low (same 90-07 plan check). Vibe-check pass 5: 0 new, the round-2 fix confirmed resolved on recheck, Codex lane approve. No critical/warning remains, so the loop stops. Info/low leftovers are in `.planning/backlog/MAINTENANCE.md` ("Phase 90 review leftovers").
+- Raw Codex `.jsonl` transcripts are withheld from the repository (Phase 86 practice); prompt, meta, report, status and pytest files are committed after gitleaks, the 32-hex scan and an account-name scan all came back clean.
