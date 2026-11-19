@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from tests.conftest import make_settings
 from tests.migration_faults import original_projection
 from triggarr.attribution import ensure_cutover_recorded
-from triggarr.db import init_db, insert_search_entry
+from triggarr.db import OUTCOME_INSTANCE_REMOVED, init_db, insert_search_entry
 from triggarr.log_buffer import log_buffer
 from triggarr.models.config import InstanceConfig
 from triggarr.web.routes import STATIC_DIR, router
@@ -531,3 +531,95 @@ async def test_history_page_legacy_row_stored_outcome_unchanged(app_env):
     async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
         row = await cursor.fetchone()
     assert row[0] == "searched"
+
+
+# ---------------------------------------------------------------------------
+# Instance removed labeling (D-02..D-05)
+# ---------------------------------------------------------------------------
+
+REMOVED_TOOLTIP = "This instance was removed before the search finished; it will not be checked again."
+
+
+def _results_fragment(text: str) -> str:
+    """Return the History results list, excluding the filter bar."""
+    return text[text.index('class="space-y-0"') :]
+
+
+def _removed_span(text: str) -> str:
+    """Return the opening tag plus text of the span that renders 'Instance removed'."""
+    match = re.search(r"<span[^>]*>\s*Instance removed\s*</span>", text, re.DOTALL)
+    assert match is not None, "no span renders 'Instance removed'"
+    return match.group(0)
+
+
+async def test_history_instance_removed_row_shows_badge_and_tooltip(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Radarr", "missing", "Gone Movie", outcome=OUTCOME_INSTANCE_REMOVED)
+    with TestClient(app) as client:
+        response = client.get("/history")
+    assert response.status_code == 200
+    fragment = _results_fragment(response.text)
+    assert _renders_text(fragment, "Instance removed")
+    assert REMOVED_TOOLTIP in fragment
+    assert "instance_removed" not in fragment
+    assert not _renders_text(fragment, "searched")
+    assert "Legacy — tracking discontinued" not in fragment
+
+
+async def test_history_instance_removed_badge_uses_legacy_gray(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Radarr", "missing", "Gone Movie", outcome=OUTCOME_INSTANCE_REMOVED)
+    with TestClient(app) as client:
+        response = client.get("/history")
+    span = _removed_span(_results_fragment(response.text))
+    assert "bg-gray-500/20 text-gray-400" in span
+
+
+async def test_history_legacy_and_instance_removed_never_conflated(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Closed Show", outcome=OUTCOME_INSTANCE_REMOVED)
+    await ensure_cutover_recorded(db, {})
+    with TestClient(app) as client:
+        response = client.get("/history")
+    fragment = _results_fragment(response.text)
+    assert fragment.count("Legacy — tracking discontinued") == 1
+    assert len(re.findall(r">\s*Instance removed\s*<", fragment)) == 1
+
+
+async def test_history_outcome_filter_offers_instance_removed(app_env):
+    app, db = app_env
+    with TestClient(app) as client:
+        response = client.get("/history")
+    text = response.text
+    filter_bar = text[: text.index("Showing") if "Showing" in text else len(text)]
+    assert re.search(r'hx-get="[^"]*outcome=instance_removed[^"]*"', filter_bar)
+    assert _renders_text(filter_bar, "Instance removed")
+    assert not _renders_text(filter_bar, "instance_removed")
+
+
+async def test_history_outcome_filter_instance_removed_filters_rows(app_env):
+    app, db = app_env
+    await insert_search_entry(db, "Radarr", "missing", "Closed Movie", outcome=OUTCOME_INSTANCE_REMOVED)
+    await insert_search_entry(db, "Radarr", "missing", "Grabbed Movie", outcome="grabbed")
+    with TestClient(app) as client:
+        response = client.get("/partials/history-results?outcome=instance_removed")
+    text = response.text
+    assert "Closed Movie" in text
+    assert "Grabbed Movie" not in text
+    pill = re.search(r"<a[^>]*>\s*Instance removed\s*</a>", text, re.DOTALL)
+    assert pill is not None
+    assert "bg-gray-500/20 text-gray-400" in pill.group(0)
+
+
+async def test_history_instance_removed_row_keeps_instance_name_and_is_not_in_progress(app_env):
+    app, db = app_env
+    await insert_search_entry(
+        db, "Radarr", "missing", "Closed Movie", outcome=OUTCOME_INSTANCE_REMOVED, instance_id="Main"
+    )
+    await insert_search_entry(db, "Radarr", "missing", "Live Movie", outcome="searched", instance_id="Main")
+    with TestClient(app) as client:
+        response = client.get("/history")
+    fragment = _results_fragment(response.text)
+    assert len(re.findall(r">\s*Main\s*<", fragment)) == 2
+    assert len(re.findall(r">\s*Instance removed\s*<", fragment)) == 1
