@@ -3145,3 +3145,79 @@ async def test_run_migrations_proceeds_when_pruning_fails(tmp_path, monkeypatch)
         line.startswith("WARNING") and "Could not remove old retry backup" in line for line in log_text.splitlines()
     ), f"Expected the pruning WARNING line, got: {log_text!r}"
     assert "ERROR" not in log_text
+
+
+# ---------------------------------------------------------------------------
+# Shared pending-outcome rule (Phase 90)
+# ---------------------------------------------------------------------------
+
+
+async def _null_outcomes(db, row_ids) -> None:
+    for row_id in row_ids:
+        await db.execute("UPDATE search_history SET outcome = NULL WHERE id = ?", (row_id,))
+    await db.commit()
+
+
+def test_pending_predicate_constants():
+    """The pending rule is defined once: the tuple, the removed-instance outcome and both SQL twins."""
+    from triggarr.db import OUTCOME_INSTANCE_REMOVED, PENDING_OUTCOMES, _NOT_PENDING_SQL, _PENDING_SQL
+
+    assert PENDING_OUTCOMES == ("searched", "partial")
+    assert OUTCOME_INSTANCE_REMOVED == "instance_removed"
+    assert OUTCOME_INSTANCE_REMOVED not in PENDING_OUTCOMES
+    assert _PENDING_SQL == "COALESCE(outcome, 'searched') IN ('searched', 'partial')"
+    assert _NOT_PENDING_SQL == "COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')"
+
+
+async def test_pending_predicate_null_outcome_counts_toward_cap(tmp_path):
+    """NULL-outcome rows are pending, so they count toward the stable-ID pending cap."""
+    db, _ = await _init_test_db(tmp_path)
+    for i in range(2):
+        await insert_search_entry(
+            db, "Radarr", "missing", f"Movie {i}", item_id=i, instance_id="Main",
+            instance_stable_id="sid-a", max_rows=1,
+        )
+    await _null_outcomes(db, await _ids(db))
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(
+            db, "Radarr", "missing", "Movie 3", item_id=3, instance_id="Main",
+            instance_stable_id="sid-a", max_rows=1,
+        )
+    await db.close()
+
+
+async def test_pending_predicate_null_outcome_counts_toward_cap_name_mode(tmp_path):
+    """Same as the stable-ID case, for an instance with no stable ID (name mode)."""
+    db, _ = await _init_test_db(tmp_path)
+    for i in range(2):
+        await insert_search_entry(db, "Radarr", "missing", f"Movie {i}", item_id=i, instance_id="Main", max_rows=1)
+    await _null_outcomes(db, await _ids(db))
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(db, "Radarr", "missing", "Movie 3", item_id=3, instance_id="Main", max_rows=1)
+    await db.close()
+
+
+async def test_pending_predicate_null_outcome_is_trackable(tmp_path):
+    """A NULL-outcome row with an item_id is selected for tracking."""
+    db, _ = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie", item_id=7, instance_id="Main", instance_stable_id="sid-a",
+    )
+    await _null_outcomes(db, await _ids(db))
+    entries = await get_trackable_entries(db, instance_stable_id="sid-a")
+    assert [e["item_id"] for e in entries] == [7]
+    await db.close()
+
+
+async def test_pending_predicate_null_outcome_never_pruned(tmp_path):
+    """A NULL-outcome row survives the finished-row trim."""
+    db, _ = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Null row", item_id=1, instance_id="Main", max_rows=3)
+    null_ids = await _ids(db)
+    await _null_outcomes(db, null_ids)
+    for i in range(5):
+        await insert_search_entry(
+            db, "Radarr", "missing", f"Done {i}", outcome="failed", instance_id="Main", max_rows=3,
+        )
+    assert null_ids[0] in await _ids(db)
+    await db.close()
