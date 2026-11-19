@@ -1618,8 +1618,10 @@ async def close_out_orphaned_pending_searches(
     only ever sees a validated configuration; a valid configuration with no
     instances is what remains after the last instance is removed (including when
     that removal's close-out failed after the settings write), which is the case
-    this sweep repairs. Rows with no stable ID cannot belong to a configured
-    instance and are closed. No migration does this, because a migration cannot
+    this sweep repairs. Rows with no stable ID are never selected by any
+    instance. This includes the item-less rows imported from ``state.json``,
+    which may belong to a configured instance; they are closed by decision A1.
+    No migration does this, because a migration cannot
     see the cutover and would not repair a close-out that failed later.
 
     The transaction is finalized and verified before any error or cancellation
