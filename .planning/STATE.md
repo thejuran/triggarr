@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "Phase 89 in review — PR #64 open, owner acceptance pending"
-stopped_at: "PR #64 opened at 4c9abdae; BM round 5 clean and Codex complete (0 findings) on that head; checkpoint comment posted; next: CI docker + Greptile, then owner acceptance"
-last_updated: "2026-11-19T00:41:46.000Z"
-last_activity: 2026-11-18 -- Phase 89 PR #64 opened; vibe-check deep review fix 9ec53d89; BM round 5 + Codex clean on PR head
+status: "Phase 90 planned, ready to execute (8 plans, run in order); Phase 89 merged as PR #64"
+stopped_at: "Phase 90 planned: 8 plans passed the plan checker on the 3rd pass; next: /bm:execute-phase 90"
+last_updated: "2026-11-19T02:01:28.000Z"
+last_activity: "2026-11-18 -- Phase 89 PR #64 merged (main CI passed on abcad6d1); Phase 90 researched and planned (8 plans, 8 waves)"
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 7
+  completed_phases: 3
+  total_plans: 15
   completed_plans: 7
-  percent: 33
+  percent: 50
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 89: startup-shutdown-resource-cleanup
+**Current focus:** Phase 90: removed-instance-pending-search-lifecycle
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 89 (startup-shutdown-resource-cleanup) — IN REVIEW (PR #64 open)
-Plan: 2 of 2 executed (89-01 shutdown isolation, 89-02 failed-startup cleanup); fix rounds WR-01 (26a2fc8f) and WR-02 (6feac144); BM round 3: 0 critical/0 warning, 6 info + 2 set-asides to backlog (owner stopping rule); Codex trusted at cdd1ff8d: complete, 0 findings; verifier: 22/22 must-haves
-Status: Phase 89 in review, PR #64 open; next: CI and Greptile on head 4c9abdae, then owner acceptance
-Last activity: 2026-11-18 -- PR #64 opened; vibe-check deep review (1 medium, fixed in 9ec53d89); BM round 4 at 4a7c7c5f and round 5 at PR head 4c9abdae: 0 critical/warning; Codex complete, 0 findings at both heads; info items backlogged (DR-01, R4-IN-01, R4-IN-02)
+Phase: 90 (removed-instance-pending-search-lifecycle) — PLANNED, ready to execute
+Plan: 0 of 8 executed (90-01..90-08, one plan per wave, strictly in order on branch phase-90-removed-instance-pending-search-lifecycle); research, validation strategy and pattern map written; plan checker passed on iteration 3 (0 blockers, 0 warnings)
+Status: Phase 90 planned, ready to execute; Phase 89 merged as PR #64 (merge abcad6d1, main CI passed)
+Last activity: 2026-11-18 -- Phase 90 planned (8 plans); Phase 89 PR #64 merged
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
