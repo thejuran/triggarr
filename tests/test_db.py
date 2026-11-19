@@ -3536,6 +3536,28 @@ async def test_close_out_instance_removed_leaves_other_identities_alone(tmp_path
     await db.close()
 
 
+async def _set_detail(db, row_id: int, detail: str | None) -> None:
+    await db.execute("UPDATE search_history SET detail = ? WHERE id = ?", (detail, row_id))
+    await db.commit()
+
+
+async def test_close_out_instance_removed_keeps_existing_detail(tmp_path):
+    """WR-01: a partial row keeps its grab count; empty or NULL detail gets the plain note."""
+    db, _ = await _init_test_db(tmp_path)
+    ids = await _seed_pending(db, app="Sonarr", count=3)
+    await _set_detail(db, ids[1], "partial: 2/5 episodes")
+    await _set_detail(db, ids[2], None)
+    assert await close_out_removed_instance_searches(
+        db, app="Sonarr", instance_stable_id="sid-old", instance_id="Main",
+    ) == 3
+    rows = await _rows(db, ids)
+    assert [r[1] for r in rows] == [OUTCOME_INSTANCE_REMOVED] * 3
+    assert [r[2] for r in rows] == [
+        "instance removed", "partial: 2/5 episodes (instance removed)", "instance removed",
+    ]
+    await db.close()
+
+
 async def test_close_out_instance_removed_leaves_finished_rows_alone(tmp_path):
     db, _ = await _init_test_db(tmp_path)
     for i, outcome in enumerate(["grabbed", "unresolved", "failed", "partial_expired"]):
@@ -3990,6 +4012,25 @@ async def test_orphan_sweep_repairs_failed_close_out_of_last_instance(tmp_path, 
     assert {r[1] for r in await _rows(db, stuck)} == {OUTCOME_INSTANCE_REMOVED}
     assert await _rows(db, legacy) == legacy_before
     assert await _is_legacy(db, legacy[0]) is True
+    await db.close()
+
+
+async def test_orphan_sweep_keeps_existing_detail(tmp_path):
+    """WR-01: a partial row keeps its grab count; empty or NULL detail gets the plain note."""
+    db, _ = await _init_test_db(tmp_path)
+    ids = [
+        await _add_row(db, "Sonarr", "sid-gone", "empty"),
+        await _add_row(db, "Sonarr", "sid-gone", "partial", outcome="partial"),
+        await _add_row(db, "Sonarr", None, "null"),
+    ]
+    await _set_detail(db, ids[1], "partial: 2/5 episodes")
+    await _set_detail(db, ids[2], None)
+    assert await close_out_orphaned_pending_searches(db, configured=_CONFIGURED) == 3
+    rows = await _rows(db, ids)
+    assert [r[1] for r in rows] == [OUTCOME_INSTANCE_REMOVED] * 3
+    assert [r[2] for r in rows] == [
+        "instance removed", "partial: 2/5 episodes (instance removed)", "instance removed",
+    ]
     await db.close()
 
 

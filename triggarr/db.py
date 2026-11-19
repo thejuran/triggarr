@@ -1551,6 +1551,12 @@ async def replace_retired_connection(db: aiosqlite.Connection) -> aiosqlite.Conn
     return new_db
 
 
+# Close-out keeps an existing detail (e.g. a Sonarr "partial: 2/5 episodes" grab
+# count) and appends the removal note; empty or NULL detail gets the plain note.
+# Takes two bound parameters, both INSTANCE_REMOVED_DETAIL.
+_CLOSE_OUT_DETAIL_SQL = "detail = CASE WHEN detail IS NULL OR detail = '' THEN ? ELSE detail || ' (' || ? || ')' END"
+
+
 async def close_out_removed_instance_searches(
     db: aiosqlite.Connection, *, app: str, instance_stable_id: str, instance_id: str,
 ) -> int:
@@ -1576,9 +1582,9 @@ async def close_out_removed_instance_searches(
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     try:
         cursor = await db.execute(
-            "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? "
-            f"WHERE app = ? AND instance_stable_id = ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",  # noqa: S608
-            (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, now, app, instance_stable_id),
+            f"UPDATE search_history SET outcome = ?, {_CLOSE_OUT_DETAIL_SQL}, resolved_at = ? "  # noqa: S608
+            f"WHERE app = ? AND instance_stable_id = ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",
+            (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, INSTANCE_REMOVED_DETAIL, now, app, instance_stable_id),
         )
         closed = cursor.rowcount
         await db.commit()
@@ -1636,9 +1642,9 @@ async def close_out_orphaned_pending_searches(
             if stable_id and (app, stable_id) in configured_pairs:
                 continue
             update = await db.execute(
-                "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? "  # noqa: S608
+                f"UPDATE search_history SET outcome = ?, {_CLOSE_OUT_DETAIL_SQL}, resolved_at = ? "  # noqa: S608
                 f"WHERE app = ? AND instance_stable_id IS ? AND {_PENDING_SQL} AND NOT {_LEGACY_PENDING_SQL}",
-                (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, now, app, stable_id),
+                (OUTCOME_INSTANCE_REMOVED, INSTANCE_REMOVED_DETAIL, INSTANCE_REMOVED_DETAIL, now, app, stable_id),
             )
             logger.debug("Orphan sweep: closed {n} pending search(es) of {app}", n=update.rowcount, app=app)
             total += update.rowcount
