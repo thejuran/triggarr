@@ -143,6 +143,39 @@ def _cached_tags_cover_config(cached_tags: list[Tag], instance_config: InstanceC
     )
 
 
+def _revalidate_queued_instance(
+    app: FastAPI,
+    app_name: str,
+    instance_name: str,
+    *,
+    expected_stable_id: str,
+    expected_client: ArrClient,
+) -> InstanceConfig | None:
+    """Return the live configuration if queued work may still run for this instance, else None.
+
+    Must be called while holding ``app.state.search_lock``. Work that read its
+    client and configuration before waiting for the lock may find the instance
+    gone when it gets the lock. The name alone is not enough: an instance
+    removed and then created again under the same name is a different
+    instance, with a new stable ID and a new client. The instance must still be
+    configured and enabled under that name with the same stable ID, and the
+    client registered under that name must be the very object the work
+    captured (compared by identity, since a replaced client has been closed).
+
+    Stable IDs are compared for equality, not required to be non-empty: test
+    fixtures (and only they) hold instances with an empty ID, and the client
+    identity half of the rule still turns stale work away there.
+
+    Synchronous and free of I/O.
+    """
+    live_config = app.state.settings.get_enabled_instances(app_name).get(instance_name)
+    if live_config is None or live_config.id != expected_stable_id:
+        return None
+    if getattr(app.state, f"{app_name}_clients", {}).get(instance_name) is not expected_client:
+        return None
+    return live_config
+
+
 def make_search_job(
     app: FastAPI, app_name: str, instance_name: str, state_path: Path
 ) -> Callable[[], Awaitable[None]]:
@@ -181,6 +214,23 @@ def make_search_job(
         if instance_config is None:
             return
         async with app.state.search_lock:
+            # The client and configuration above were read before waiting for
+            # the lock. An instance can be removed, or removed and created
+            # again under the same name, while this job waits. Running then
+            # would search through the removed instance's client, record
+            # pending searches under its stable ID and track them with that
+            # same ID, so selecting rows by stable ID alone does not stop it.
+            live_config = _revalidate_queued_instance(
+                app, app_name, instance_name, expected_stable_id=instance_config.id, expected_client=client
+            )
+            if live_config is None:
+                logger.info(
+                    "{app}/{inst}: skipped a queued search -- the instance was removed or changed while it waited",
+                    app=app_name.title(),
+                    inst=instance_name,
+                )
+                return
+            instance_config = live_config
             # SAFETY-03: per-job consecutive-failure counter key; also reused
             # by plan 65-03 (lock-holder identity). Assigned first so every
             # branch below can reference it.
