@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
 status: executing
-stopped_at: Phase 90 executed and reviewed (BM, Codex, vibe-check; final head 22b99325); automated verification passed 12/12; 3 human checks and the phase PR pending
-last_updated: "2026-11-19T23:43:16.000Z"
-last_activity: 2026-11-19 -- Phase 90 review loop closed and goal verified (human checks pending)
+stopped_at: Phase 90 executed, reviewed and verified (final code head 22b99325); owner approved verification 2026-11-19 with 3 human checks left in 90-HUMAN-UAT.md; next is the phase PR
+last_updated: "2026-11-19T23:43:51.000Z"
+last_activity: 2026-11-19 -- Phase 90 verification approved by owner; PR next
 progress:
   total_phases: 6
   completed_phases: 3
