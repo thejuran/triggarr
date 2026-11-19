@@ -4497,6 +4497,205 @@ def test_save_settings_form_removal_invalidates_tag_cache(multi_client, multi_in
     )
 
 
+# ---------------------------------------------------------------------------
+# Removed-instance pending-search close-out (Save Settings omission)
+# ---------------------------------------------------------------------------
+
+
+def _give_radarr_ids(app, *, key_4k: str | None = None) -> None:
+    settings = app.state.settings
+    settings.radarr["Default"].id = "sid-default"
+    settings.radarr["4K"].id = "sid-4k"
+    if key_4k is not None:
+        settings.radarr["4K"].api_key = SecretStr(key_4k)
+
+
+def _form_without_4k(**overrides) -> dict:
+    data = _multi_form_data(**overrides)
+    for key in list(data):
+        if key.startswith("radarr__4K__"):
+            del data[key]
+    return data
+
+
+async def _post_settings(app, data: dict):
+    async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        return await ac.post("/settings", data=data)
+
+
+def _buffered(level: str) -> list[str]:
+    return [e.message for e in log_buffer.get_recent(100) if e.level == level]
+
+
+async def test_save_settings_form_removal_closes_out_pending_searches(multi_instance_app):
+    app = multi_instance_app
+    _give_radarr_ids(app)
+    db = app.state.db
+    removed = await _seed_rows(db, "Radarr", "sid-4k", name="4K")
+    kept = await _seed_rows(db, "Radarr", "sid-default")
+
+    response = await _post_settings(app, _form_without_4k())
+
+    assert response.status_code == 303
+    assert "4K" not in app.state.settings.radarr
+    for outcome, detail, resolved_at in await _row_states(db, removed):
+        assert (outcome, detail) == ("instance_removed", "instance removed")
+        assert resolved_at is not None
+    assert await _still_pending(db, kept)
+
+
+async def test_save_settings_form_removal_close_out_failure_still_saves(multi_instance_app):
+    app = multi_instance_app
+    _give_radarr_ids(app)
+    try:
+        with patch(
+            "triggarr.web.routes.close_out_removed_instance_searches",
+            AsyncMock(side_effect=RuntimeError("db boom")),
+        ):
+            response = await _post_settings(app, _form_without_4k())
+    finally:
+        logger.remove()
+
+    assert response.status_code == 303
+    assert "4K" not in app.state.settings.radarr
+    errors = _buffered("ERROR")
+    assert len(errors) == 1
+    assert "closing out its pending searches failed" in errors[0]
+    assert "RuntimeError" in errors[0]
+    assert "db boom" not in errors[0]
+
+
+async def test_save_settings_close_out_failure_log_leaks_nothing(multi_instance_app):
+    """The route rebuilds the log sinks from the new settings before the close-out, so the
+    removed instance's key is unknown to them. The real setup_logging runs; its stderr sink is
+    pointed at a StringIO (patching triggarr.logging.create_redacting_sink) and the viewer
+    buffer is read from triggarr.log_buffer.log_buffer.
+    """
+    app = multi_instance_app
+    _give_radarr_ids(app, key_4k=_REMOVED_KEY_SENTINEL)
+    stream = io.StringIO()
+    real_sink = create_redacting_sink
+    leaking = RuntimeError(f"failed with {_REMOVED_KEY_SENTINEL} at http://user:{_URL_SENTINEL}@host/")
+    try:
+        with (
+            patch("triggarr.logging.create_redacting_sink", lambda secrets, **_kw: real_sink(secrets, stream=stream)),
+            patch("triggarr.web.routes.close_out_removed_instance_searches", AsyncMock(side_effect=leaking)),
+        ):
+            response = await _post_settings(app, _form_without_4k())
+    finally:
+        logger.remove()
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/settings")
+    stderr_text = stream.getvalue()
+    entries = log_buffer.get_recent(100)
+    for sentinel in (_REMOVED_KEY_SENTINEL, _URL_SENTINEL):
+        assert sentinel not in stderr_text
+        assert all(sentinel not in e.message for e in entries)
+        assert sentinel not in response.text
+    assert "RuntimeError" in stderr_text
+    assert any(e.level == "ERROR" and "radarr/4K" in e.message and "RuntimeError" in e.message for e in entries)
+
+
+async def test_save_settings_cancelled_during_close_out_finishes_remaining_cleanup(multi_instance_app):
+    app = multi_instance_app
+    _give_radarr_ids(app)
+    stale_client = app.state.radarr_clients["4K"]
+    order: list[str] = []
+    stale_client.close = AsyncMock(side_effect=lambda: order.append("client_close"))
+
+    async def cancelled_close_out(*_args, **_kwargs):
+        order.append("close_out")
+        raise asyncio.CancelledError()
+
+    try:
+        with (
+            patch("triggarr.web.routes.save_state", side_effect=lambda *a, **k: order.append("save_state")),
+            patch(
+                "triggarr.web.routes.close_out_removed_instance_searches",
+                AsyncMock(side_effect=cancelled_close_out),
+            ),pytest.raises(asyncio.CancelledError)
+        ):
+            await _post_settings(app, _form_without_4k())
+    finally:
+        logger.remove()
+
+    assert order == ["save_state", "close_out", "client_close"]
+    assert "4K" not in app.state.settings.radarr
+    assert not app.state.search_lock.locked()
+    assert app.state.db.in_transaction is False
+
+
+async def test_save_settings_close_out_with_unverifiable_rollback_replaces_the_connection(
+    multi_instance_app, monkeypatch
+):
+    app = multi_instance_app
+    _give_radarr_ids(app)
+    old_db = app.state.db
+    removed = await _seed_rows(old_db, "Radarr", "sid-4k", name="4K")
+    stale_client = app.state.radarr_clients["4K"]
+    state = _arm_unverifiable_rollback(old_db, monkeypatch)
+    try:
+        response = await _post_settings(app, _form_without_4k())
+        monkeypatch.undo()
+
+        assert response.status_code == 303
+        assert state["in_transaction_at_commit"] is True
+        assert app.state.db is not old_db
+        assert not is_connection_retired(app.state.db)
+        assert not app.state.search_lock.locked()
+        with pytest.raises(Exception):  # noqa: B017 - any failure to commit proves the connection is unusable
+            await old_db.commit()
+        assert await _still_pending(app.state.db, removed)
+        await insert_search_entry(app.state.db, "Lidarr", "missing", "Unrelated", item_id=1, instance_id="Other")
+        assert await _still_pending(app.state.db, removed)
+        assert "4K" not in app.state.settings.radarr
+        stale_client.close.assert_awaited()
+    finally:
+        logger.remove()
+        if app.state.db is not old_db:
+            await app.state.db.close()
+
+
+async def test_save_settings_disabling_instance_keeps_pending_searches(multi_instance_app):
+    app = multi_instance_app
+    _give_radarr_ids(app)
+    db = app.state.db
+    rows = await _seed_rows(db, "Radarr", "sid-4k", name="4K")
+    data = _multi_form_data()
+    del data["radarr__4K__enabled"]  # still configured, now disabled
+    close_out = AsyncMock()
+    try:
+        with patch("triggarr.web.routes.close_out_removed_instance_searches", close_out, create=True):
+            response = await _post_settings(app, data)
+    finally:
+        logger.remove()
+
+    assert response.status_code == 303
+    assert "4K" in app.state.settings.radarr
+    assert not app.state.settings.radarr["4K"].enabled
+    assert await _still_pending(db, rows)
+    close_out.assert_not_called()
+
+
+async def test_save_settings_unchanged_instances_trigger_no_close_out(multi_instance_app):
+    app = multi_instance_app
+    _give_radarr_ids(app)
+    db = app.state.db
+    rows = await _seed_rows(db, "Radarr", "sid-4k", name="4K") + await _seed_rows(db, "Radarr", "sid-default")
+    close_out = AsyncMock()
+    try:
+        with patch("triggarr.web.routes.close_out_removed_instance_searches", close_out, create=True):
+            response = await _post_settings(app, _multi_form_data(request_timeout="45"))
+    finally:
+        logger.remove()
+
+    assert response.status_code == 303
+    assert app.state.settings.general.request_timeout == 45
+    assert await _still_pending(db, rows)
+    close_out.assert_not_called()
+
+
 def test_search_now_refetches_when_cached_list_lacks_configured_tag(multi_instance_app):
     """vibe-check bugs-001: a manual search refetches a fresh cached list that lacks a configured tag."""
     import time
