@@ -69,6 +69,7 @@ from triggarr.search.outcome import cycle_view
 from triggarr.search.scheduler import (
     _TAG_CACHE_TTL_SECONDS,
     _cached_tags_cover_config,
+    _revalidate_queued_instance,
     _run_one_cycle,
     make_search_job,
 )
@@ -880,6 +881,11 @@ async def save_settings(request: Request) -> RedirectResponse:
         # were rebuilt from the new settings above and no longer know the
         # removed instance's API key, so a failure line never carries exception
         # text. A failure or interruption here is repaired by the startup check.
+        # A scheduled job or manual search that was already waiting on
+        # search_lock for a removed instance re-checks, once it holds the
+        # lock, that the instance is still configured and enabled with the
+        # same stable ID and the same client, and does nothing otherwise
+        # (_revalidate_queued_instance).
         removed_instances: list[tuple[str, str, str]] = []
         for name in APP_TYPES:
             remaining_ids = {cfg.id for cfg in getattr(new_settings, name).values() if cfg.id}
@@ -1357,7 +1363,11 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         # lets a failure or cancellation through, so the lock is still held
         # until the connection is outside any transaction, or retired and
         # replaced below. A close-out that failed or was interrupted is
-        # repaired by the startup check.
+        # repaired by the startup check. A scheduled job or manual search that
+        # was already waiting on search_lock for this instance re-checks, once
+        # it holds the lock, that the instance is still configured and enabled
+        # with the same stable ID and the same client, and does nothing
+        # otherwise (_revalidate_queued_instance).
         if not removed_stable_id:
             logger.warning(
                 "Removed {app}/{inst} but it has no stable ID; its pending searches were not closed out",
@@ -1449,6 +1459,24 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
         return HTMLResponse("Rate limited -- try again shortly", status_code=429)
 
     async with request.app.state.search_lock:
+        # The client and configuration above were read before waiting for the
+        # lock. The instance can be removed, or removed and created again
+        # under the same name, while this request waits. Searching then would
+        # go through the removed instance's client and record pending searches
+        # under its stable ID, so selecting rows by stable ID alone does not
+        # stop it. Checked before the rate limiter is stamped.
+        live_config = _revalidate_queued_instance(
+            request.app, app_name, instance_name, expected_stable_id=instance_config.id, expected_client=client
+        )
+        if live_config is None:
+            logger.info(
+                "{name}/{inst}: Manual search skipped -- the instance was removed or changed while the request waited",
+                name=app_name.title(),
+                inst=instance_name,
+            )
+            return HTMLResponse("Instance not enabled", status_code=400)
+        instance_config = live_config
+
         # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
         now = time.monotonic()
         last = request.app.state.last_search_time.get(rate_key, 0.0)
